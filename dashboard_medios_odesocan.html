@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ODESOCAN · Observatorio de Medios Canarios</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* ── TOKENS ────────────────────────────────────────────── */
+:root {
+  --font-body: 'Sora', system-ui, sans-serif;
+  --font-display: 'Lora', Georgia, serif;
+  --radius: 14px;
+  --shadow: 0 4px 24px rgba(0,0,0,.18);
+  --transition: .18s ease;
+}
+
+/* ── DARK THEME (default) ──────────────────────────────── */
+[data-theme="dark"] {
+  --bg:        #0d1017;
+  --surface:   #141922;
+  --surface2:  #1c2333;
+  --surface3:  #232e42;
+  --border:    #2a3650;
+  --border2:   #364463;
+  --text:      #e8edf5;
+  --text2:     #a8b5cc;
+  --muted:     #5c6e8a;
+  --accent:    #4f9cf9;
+  --accent2:   #f97316;
+  --accent3:   #22d3a5;
+  --accent4:   #c084fc;
+  --c5:        #f43f5e;
+  --c6:        #fbbf24;
+  --c7:        #34d399;
+  --heat0:     #0d1219;
+  --heat1:     #4f9cf9;
+  --pill-bg:   rgba(79,156,249,.12);
+  --pill-bd:   rgba(79,156,249,.22);
+  --header-bg: linear-gradient(135deg,#0d1017 0%,#141f38 60%,#0d1220 100%);
+  --toggle-icon: '☀️';
+}
+
+/* ── LIGHT THEME ───────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:        #f4f6fb;
+  --surface:   #ffffff;
+  --surface2:  #f0f3fa;
+  --surface3:  #e4eaf5;
+  --border:    #d0d9ee;
+  --border2:   #b8c5e0;
+  --text:      #1a2340;
+  --text2:     #4a5878;
+  --muted:     #8a9ab8;
+  --accent:    #2563eb;
+  --accent2:   #ea6c0a;
+  --accent3:   #0ea874;
+  --accent4:   #9333ea;
+  --c5:        #dc2626;
+  --c6:        #d97706;
+  --c7:        #16a34a;
+  --heat0:     #e8edf5;
+  --heat1:     #2563eb;
+  --pill-bg:   rgba(37,99,235,.08);
+  --pill-bd:   rgba(37,99,235,.18);
+  --header-bg: linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#1e40af 100%);
+  --toggle-icon: '🌙';
+  --shadow: 0 4px 24px rgba(0,0,0,.08);
+}
+
+/* ── RESET ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background var(--transition), color var(--transition);
+}
+
+/* ── HEADER ─────────────────────────────────────────────── */
+header {
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 1.6rem 3rem;
+  position: relative;
+  overflow: hidden;
+}
+[data-theme="dark"] header::before {
+  content: '';
+  position: absolute; top: -40px; left: -40px;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(79,156,249,.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.header-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
+.header-left { flex: 1; min-width: 0; }
+.header-tag {
+  font-size: .7rem; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(255,255,255,.7); margin-bottom: .4rem; font-weight: 500;
+}
+[data-theme="light"] .header-tag { color: rgba(255,255,255,.85); }
+h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3.5vw, 3rem);
+  font-weight: 600; line-height: 1.15;
+  color: #fff;
+  margin-bottom: .3rem;
+}
+.header-sub { color: rgba(255,255,255,.7); font-size: .9rem; font-weight: 300; }
+.header-meta { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+.meta-badge {
+  display: flex; align-items: center; gap: .35rem;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 100px; padding: .25rem .75rem;
+  font-size: .75rem; color: rgba(255,255,255,.85);
+}
+.meta-badge span { color: #fff; font-weight: 600; }
+
+/* ── THEME TOGGLE ───────────────────────────────────────── */
+.theme-toggle {
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 100px; padding: .4rem 1rem;
+  cursor: pointer; font-family: var(--font-body);
+  font-size: .8rem; color: #fff; font-weight: 500;
+  transition: all .2s; white-space: nowrap; align-self: flex-start;
+}
+.theme-toggle:hover { background: rgba(255,255,255,.22); }
+.theme-toggle .icon { font-size: 1rem; }
+
+/* ── FILTERS BAR ────────────────────────────────────────── */
+.filters-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: .75rem 3rem;
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 100;
+  backdrop-filter: blur(12px);
+  transition: background var(--transition);
+}
+.filters-label {
+  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; flex-shrink: 0;
+}
+.filter-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text2); border-radius: 100px;
+  padding: .28rem .85rem; font-size: .78rem; cursor: pointer;
+  transition: all var(--transition); font-family: var(--font-body); white-space: nowrap;
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--text); }
+.filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.filter-sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.filter-select {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 100px; padding: .28rem 1rem; font-size: .78rem; cursor: pointer;
+  font-family: var(--font-body); outline: none; transition: all var(--transition);
+}
+.filter-select:focus { border-color: var(--accent); }
+.reset-btn {
+  margin-left: auto; background: transparent; border: 1px solid var(--border);
+  color: var(--muted); border-radius: 100px; padding: .28rem .85rem;
+  font-size: .75rem; cursor: pointer; font-family: var(--font-body);
+  transition: all var(--transition); white-space: nowrap;
+}
+.reset-btn:hover { border-color: var(--c5); color: var(--c5); }
+
+/* ── ACTIVE FILTER BAR ──────────────────────────────────── */
+.active-filter-bar {
+  background: var(--pill-bg); border-bottom: 1px solid var(--pill-bd);
+  padding: .35rem 3rem; font-size: .76rem; color: var(--accent);
+  display: none; align-items: center; gap: .5rem; flex-wrap: wrap;
+  transition: background var(--transition);
+}
+.active-filter-bar.visible { display: flex; }
+.af-tag {
+  background: var(--pill-bg); border: 1px solid var(--pill-bd);
+  border-radius: 4px; padding: .08rem .45rem; cursor: pointer; font-size: .74rem;
+}
+.af-tag:hover { background: rgba(249,115,22,.15); color: var(--accent2); border-color: var(--accent2); }
+
+/* ── KPIs ───────────────────────────────────────────────── */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
+}
+.kpi-card {
+  background: var(--surface); padding: 1.1rem 1.5rem;
+  transition: background var(--transition);
+}
+.kpi-card:hover { background: var(--surface2); }
+.kpi-label {
+  font-size: .65rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: .25rem; font-weight: 600;
+}
+.kpi-value { font-family: var(--font-display); font-size: 1.9rem; font-weight: 600; line-height: 1; }
+.kpi-sub { font-size: .72rem; color: var(--muted); margin-top: .12rem; }
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+.dashboard { padding: 1.6rem 3rem; display: grid; gap: 1.3rem; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.3rem; }
+
+/* ── CARDS ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow); transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+.card:hover { border-color: var(--border2); }
+.card-header {
+  padding: 1rem 1.4rem .7rem; border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+}
+.card-title { font-family: var(--font-display); font-size: .98rem; font-weight: 600; color: var(--text); line-height: 1.35; }
+.card-subtitle { font-size: .7rem; color: var(--muted); margin-top: .15rem; }
+.card-chip {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 100px; padding: .15rem .55rem; font-size: .67rem; white-space: nowrap; flex-shrink: 0;
+}
+.card-body { padding: 1.2rem 1.4rem; }
+.card-body svg { display: block; width: 100%; overflow: visible; }
+.card-body-fill { flex: 1; }
+.heatmap-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) var(--surface2);
+}
+.heatmap-scroll::-webkit-scrollbar { height: 7px; }
+.heatmap-scroll::-webkit-scrollbar-track { background: var(--surface2); border-radius: 4px; }
+.heatmap-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+.heatmap-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+.heatmap-scroll svg { display: block; width: auto; }
+.heatmap-scroll.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* ── TOOLTIP ────────────────────────────────────────────── */
+#tooltip {
+  position: fixed; background: var(--surface2);
+  border: 1px solid var(--border2); border-radius: 8px;
+  padding: .55rem .85rem; font-size: .78rem; pointer-events: none;
+  z-index: 9999; display: none; max-width: 280px;
+  box-shadow: var(--shadow); line-height: 1.55;
+  font-family: var(--font-body); transition: background var(--transition);
+}
+#tooltip strong { color: var(--accent); display: block; margin-bottom: 2px; font-size: .8rem; }
+
+/* ── SVG ────────────────────────────────────────────────── */
+.axis line, .axis path { stroke: var(--border); }
+.axis text { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.grid line { stroke: var(--border); stroke-dasharray: 3,3; }
+.bar-i { cursor: pointer; transition: opacity .18s, filter .18s; }
+.bar-i:hover { filter: brightness(1.25); }
+.line-path { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.heatmap-cell { cursor: pointer; transition: opacity .18s, filter .18s; }
+.heatmap-cell:hover { filter: brightness(1.3); }
+#wc text { cursor: pointer; transition: opacity .2s, filter .2s; }
+#wc.wc-hover text { opacity: .12; filter: blur(1px); }
+#wc.wc-hover text.wc-focus { opacity: 1; filter: none; }
+
+/* ── TABLE ──────────────────────────────────────────────── */
+.news-table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+thead tr { background: var(--surface2); }
+th {
+  padding: .6rem 1rem; text-align: left;
+  font-size: .65rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: .6rem 1rem; border-bottom: 1px solid var(--border);
+  vertical-align: top; color: var(--text); line-height: 1.45;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--surface2); }
+.mbadge {
+  display: inline-block; border-radius: 100px;
+  padding: .1rem .5rem; font-size: .67rem; font-weight: 600; white-space: nowrap;
+}
+.ttag {
+  display: inline-block; border-radius: 4px;
+  padding: .06rem .38rem; font-size: .66rem; margin: 1px; border: 1px solid transparent;
+}
+.nlink { color: var(--accent); text-decoration: none; font-size: .74rem; opacity: .85; transition: opacity .15s; }
+.nlink:hover { opacity: 1; text-decoration: underline; }
+.tc { max-width: 240px; font-size: .8rem; line-height: 1.45; }
+
+/* ── PAGINATION ─────────────────────────────────────────── */
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .7rem 1rem; border-top: 1px solid var(--border);
+  background: var(--surface2); gap: 1rem; flex-wrap: wrap;
+}
+.pagination-info { font-size: .76rem; color: var(--muted); }
+.pagination-btns { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.pg-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text2); border-radius: 6px;
+  padding: .3rem .65rem; font-size: .76rem; cursor: pointer;
+  font-family: var(--font-body); transition: all var(--transition); min-width: 34px; text-align: center;
+}
+.pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pg-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.pg-btn:disabled { opacity: .35; cursor: not-allowed; }
+.pg-btn.pg-nav { padding: .3rem .8rem; }
+
+/* ── LEGEND ─────────────────────────────────────────────── */
+.legend { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: .85rem; }
+.legend-item { display: flex; align-items: center; gap: .35rem; font-size: .74rem; color: var(--muted); cursor: pointer; transition: color var(--transition); }
+.legend-item:hover { color: var(--text); }
+.ldot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: transform .15s; }
+.legend-item:hover .ldot { transform: scale(1.4); }
+
+/* ── NO DATA ────────────────────────────────────────────── */
+.nodata {
+  display: flex; align-items: center; justify-content: center;
+  height: 160px; color: var(--muted); font-size: .85rem; font-style: italic;
+}
+
+/* ── FOOTER ─────────────────────────────────────────────── */
+footer {
+  text-align: center; padding: 1.6rem;
+  font-size: .7rem; color: var(--muted);
+  border-top: 1px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────── */
+
+/* Tablet */
+@media(max-width: 900px) {
+  .row-2 { grid-template-columns: 1fr; }
+  header, .filters-bar, .dashboard, .active-filter-bar { padding-left: 1.2rem; padding-right: 1.2rem; }
+  h1 { font-size: 1.7rem; }
+}
+
+/* Mobile */
+@media(max-width: 600px) {
+  /* Header */
+  header { padding: 1.1rem 1rem; }
+  h1 { font-size: 1.3rem; }
+  .header-sub { font-size: .78rem; }
+  .header-meta { gap: .4rem; margin-top: .7rem; }
+  .meta-badge { font-size: .68rem; padding: .2rem .55rem; }
+
+  /* Filters: scroll horizontal en lugar de wrap */
+  .filters-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: .55rem 1rem;
+    gap: .4rem;
+  }
+  .filters-bar::-webkit-scrollbar { display: none; }
+  .filters-label { display: none; }
+  .filter-sep { display: none; }
+  .reset-btn { margin-left: 0; flex-shrink: 0; }
+  .filter-btn, .filter-select { flex-shrink: 0; }
+
+  .active-filter-bar { padding-left: 1rem; padding-right: 1rem; font-size: .72rem; }
+
+  /* KPIs: 2 columnas */
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .kpi-card { padding: .85rem 1rem; }
+  .kpi-value { font-size: 1.5rem; }
+  .kpi-sub { font-size: .66rem; }
+
+  /* Layout */
+  .dashboard { padding: .8rem 1rem; gap: .8rem; }
+  .card-header { padding: .8rem 1rem .6rem; }
+  .card-body { padding: .9rem 1rem; }
+
+  /* Tabla */
+  td, th { padding: .45rem .6rem; }
+  .tc { max-width: 140px; font-size: .75rem; }
+
+  /* Paginación */
+  .pagination { flex-direction: column; align-items: flex-start; gap: .4rem; padding: .6rem .8rem; }
+
+  /* Footer */
+  footer { font-size: .65rem; padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="tooltip"></div>
+
+<!-- ═══ HEADER ═══ -->
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <div class="header-tag">ODESOCAN · Laboratorio de Ciencias Sociales Computacionales</div>
+      <h1>Observatorio de Medios</h1>
+      <p class="header-sub">Análisis en tiempo real de la agenda informativa de los principales diarios del archipiélago</p>
+      <div class="header-meta">
+        <div class="meta-badge">📅 <span id="fecha-actual"></span></div>
+        <div class="meta-badge">📰 <span>220</span> noticias</div>
+        <div class="meta-badge">🗞️ <span>7</span> medios</div>
+        <div class="meta-badge">🏷️ <span>11</span> temáticas</div>
+      </div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
+      <span class="icon" id="theme-icon">☀️</span>
+      <span id="theme-label">Tema claro</span>
+    </button>
+  </div>
+</header>
+
+<!-- ═══ FILTROS ═══ -->
+<div class="filters-bar">
+  <span class="filters-label">Medio</span>
+  <button class="filter-btn active" data-medio="todos"         onclick="setMedio('todos',this)">Todos</button>
+  <button class="filter-btn"        data-medio="canarias7"     onclick="setMedio('canarias7',this)">Canarias7</button>
+  <button class="filter-btn"        data-medio="diariodeavisos"onclick="setMedio('diariodeavisos',this)">Diario de Avisos</button>
+  <button class="filter-btn"        data-medio="laprovincia"   onclick="setMedio('laprovincia',this)">La Provincia</button>
+  <button class="filter-btn"        data-medio="eldia"         onclick="setMedio('eldia',this)">El Día</button>
+  <button class="filter-btn"        data-medio="laopinion"     onclick="setMedio('laopinion',this)">La Opinión</button>
+  <button class="filter-btn"        data-medio="atlanticohoy"  onclick="setMedio('atlanticohoy',this)">Atlántico Hoy</button>
+  <button class="filter-btn"        data-medio="canariasahora" onclick="setMedio('canariasahora',this)">Canarias Ahora</button>
+  <div class="filter-sep"></div>
+  <span class="filters-label">Tema</span>
+  <select id="filtro-tema" class="filter-select" onchange="setTema(this.value)">
+    <option value="todos">Todos los temas</option>
+    <option value="politica">Política</option>
+    <option value="medio_ambiente">Medio Ambiente</option>
+    <option value="economia">Economía</option>
+    <option value="sanidad">Sanidad</option>
+    <option value="vivienda">Vivienda</option>
+    <option value="presupuestos">Presupuestos</option>
+    <option value="violencia_genero">Violencia de Género</option>
+    <option value="turismo">Turismo</option>
+    <option value="migracion">Migración</option>
+    <option value="salud_mental">Salud Mental</option>
+    <option value="dependencia_discapacidad">Dependencia y Discapacidad</option>
+  </select>
+  <button class="reset-btn" onclick="resetFiltros()">✕ Limpiar</button>
+</div>
+
+<div class="active-filter-bar" id="afbar">
+  <span>Filtros activos →</span>
+  <span id="af-medio" class="af-tag" onclick="setMedio('todos',null)" style="display:none"></span>
+  <span id="af-tema"  class="af-tag" onclick="setTema('todos')"       style="display:none"></span>
+  <span id="af-count" style="margin-left:auto;color:var(--muted)"></span>
+</div>
+
+<!-- ═══ KPIs ═══ -->
+<div class="kpi-row">
+  <div class="kpi-card"><div class="kpi-label">Noticias filtradas</div><div class="kpi-value" id="kn" style="color:var(--accent)">—</div><div class="kpi-sub">del total scrapeado</div></div>
+  <div class="kpi-card"><div class="kpi-label">Con temática</div><div class="kpi-value" id="kct" style="color:var(--accent2)">—</div><div class="kpi-sub">noticias clasificadas</div></div>
+  <div class="kpi-card"><div class="kpi-label">Tema dominante</div><div class="kpi-value" id="ktd" style="color:var(--accent3);font-size:1.2rem">—</div><div class="kpi-sub" id="ktdn"></div></div>
+  <div class="kpi-card"><div class="kpi-label">Medio líder</div><div class="kpi-value" id="kml" style="color:var(--accent4);font-size:1.2rem">—</div><div class="kpi-sub" id="kmln"></div></div>
+  <div class="kpi-card"><div class="kpi-label">Medios activos</div><div class="kpi-value" id="kma" style="color:var(--c5)">—</div><div class="kpi-sub">con datos en filtro</div></div>
+  <div class="kpi-card"><div class="kpi-label">Cobertura temática</div><div class="kpi-value" id="kcob" style="color:var(--c6)">—</div><div class="kpi-sub">noticias clasificadas</div></div>
+</div>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div class="dashboard">
+
+  <div class="row-2">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Frecuencia de Titulares por Medio</div><div class="card-subtitle">Volumen total · clic en barra para filtrar</div></div>
+        <div class="card-chip" id="chip-b">—</div>
+      </div>
+      <div class="card-body"><svg id="cb" height="270"></svg><div class="legend" id="lb"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Actividad por Hora del Día</div><div class="card-subtitle">Flujo de publicación horario por cabecera</div></div>
+        <div class="card-chip">Líneas temporales</div>
+      </div>
+      <div class="card-body"><svg id="cl" height="270"></svg><div class="legend" id="ll"></div></div>
+    </div>
+  </div>
+
+  <div class="row-2">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Temas Más Frecuentes</div><div class="card-subtitle">Agenda temática · clic para filtrar</div></div>
+        <div class="card-chip" id="chip-t">—</div>
+      </div>
+      <div class="card-body card-body-fill"><svg id="ct"></svg></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Medios × Temáticas</div><div class="card-subtitle">Coocurrencia · clic para filtrar combinación</div></div>
+        <div class="card-chip">Heatmap</div>
+      </div>
+      <div class="card-body card-body-fill heatmap-scroll" style="padding:1rem 1.2rem" id="hb"><svg id="ch"></svg></div>
+    </div>
+  </div>
+
+  <div class="row-2">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Nube de Palabras</div><div class="card-subtitle">Extraída de titulares · clic resalta noticias coincidentes</div></div>
+        <div class="card-chip" id="chip-wc">—</div>
+      </div>
+      <div class="card-body" style="padding:1rem 1.4rem"><svg id="wc" height="420" style="width:100%"></svg></div>
+    </div>
+
+    <!-- TABLE CARD -->
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Noticias Destacadas</div><div class="card-subtitle">Titular · Medio · Tema · Acceso directo</div></div>
+        <div class="card-chip" id="tc">—</div>
+      </div>
+      <div class="news-table-wrap">
+        <table>
+          <thead><tr><th>Titular</th><th>Medio</th><th>Tema(s)</th><th>Enlace</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pg-bar">
+        <span class="pagination-info" id="pg-info"></span>
+        <div class="pagination-btns" id="pg-btns"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>ODESOCAN · Observatorio para el Desarrollo Económico y Social de Canarias · <strong>bd_odesocan</strong> · schema: <em>medios.noticias</em> · 220 registros · 17.03.2026</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  THEME TOGGLE
+// ═══════════════════════════════════════════════════════
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.dataset.theme === 'dark';
+  html.dataset.theme = isDark ? 'light' : 'dark';
+  document.getElementById('theme-icon').textContent  = isDark ? '🌙' : '☀️';
+  document.getElementById('theme-label').textContent = isDark ? 'Tema oscuro' : 'Tema claro';
+  // Redraw charts to pick up new CSS variable colors
+  redraw();
+}
+
+// ═══════════════════════════════════════════════════════
+//  DATOS
+// ═══════════════════════════════════════════════════════
+const MM=[{"medio": "canarias7", "total": 71, "color": "#1a5fa8"}, {"medio": "canariasahora", "total": 34, "color": "#c62828"}, {"medio": "atlanticohoy", "total": 28, "color": "#00695c"}, {"medio": "diariodeavisos", "total": 27, "color": "#6a1b9a"}, {"medio": "eldia", "total": 21, "color": "#2e7d32"}, {"medio": "laprovincia", "total": 20, "color": "#d63b2f"}, {"medio": "laopinion", "total": 19, "color": "#e65100"}];
+const CM=Object.fromEntries(MM.map(d=>[d.medio,d.color]));
+const TM=[{"tema": "politica", "n": 65, "color": "#4a148c"}, {"tema": "medio_ambiente", "n": 61, "color": "#1b5e20"}, {"tema": "economia", "n": 39, "color": "#2e7d32"}, {"tema": "sanidad", "n": 25, "color": "#008591"}, {"tema": "presupuestos", "n": 17, "color": "#e65100"}, {"tema": "vivienda", "n": 14, "color": "#f57f17"}, {"tema": "turismo", "n": 12, "color": "#0277bd"}, {"tema": "violencia_genero", "n": 11, "color": "#880e4f"}, {"tema": "migracion", "n": 10, "color": "#1565c0"}, {"tema": "dependencia_discapacidad", "n": 3, "color": "#0ea5e9"}, {"tema": "salud_mental", "n": 2, "color": "#d28aff"}].sort((a,b)=>b.n-a.n);
+const CT=Object.fromEntries(TM.map(d=>[d.tema,d.color]));
+const HM=[{"medio": "diariodeavisos", "tema": "politica", "n": 7}, {"medio": "diariodeavisos", "tema": "sanidad", "n": 2}, {"medio": "diariodeavisos", "tema": "dependencia_discapacidad", "n": 1}, {"medio": "canarias7", "tema": "presupuestos", "n": 5}, {"medio": "canarias7", "tema": "politica", "n": 24}, {"medio": "atlanticohoy", "tema": "economia", "n": 6}, {"medio": "atlanticohoy", "tema": "medio_ambiente", "n": 10}, {"medio": "atlanticohoy", "tema": "politica", "n": 5}, {"medio": "canariasahora", "tema": "medio_ambiente", "n": 11}, {"medio": "canariasahora", "tema": "violencia_genero", "n": 3}, {"medio": "canariasahora", "tema": "turismo", "n": 2}, {"medio": "canariasahora", "tema": "sanidad", "n": 7}, {"medio": "canariasahora", "tema": "dependencia_discapacidad", "n": 2}, {"medio": "canariasahora", "tema": "politica", "n": 9}, {"medio": "laopinion", "tema": "turismo", "n": 1}, {"medio": "laopinion", "tema": "politica", "n": 8}, {"medio": "diariodeavisos", "tema": "medio_ambiente", "n": 11}, {"medio": "diariodeavisos", "tema": "economia", "n": 3}, {"medio": "diariodeavisos", "tema": "presupuestos", "n": 2}, {"medio": "diariodeavisos", "tema": "migracion", "n": 3}, {"medio": "diariodeavisos", "tema": "violencia_genero", "n": 1}, {"medio": "diariodeavisos", "tema": "turismo", "n": 2}, {"medio": "eldia", "tema": "economia", "n": 5}, {"medio": "eldia", "tema": "medio_ambiente", "n": 7}, {"medio": "laprovincia", "tema": "economia", "n": 4}, {"medio": "canarias7", "tema": "economia", "n": 16}, {"medio": "canarias7", "tema": "medio_ambiente", "n": 13}, {"medio": "canarias7", "tema": "sanidad", "n": 9}, {"medio": "canarias7", "tema": "violencia_genero", "n": 4}, {"medio": "canarias7", "tema": "migracion", "n": 4}, {"medio": "canarias7", "tema": "turismo", "n": 3}, {"medio": "laopinion", "tema": "sanidad", "n": 3}, {"medio": "laopinion", "tema": "presupuestos", "n": 4}, {"medio": "laopinion", "tema": "medio_ambiente", "n": 4}, {"medio": "laopinion", "tema": "economia", "n": 3}, {"medio": "laopinion", "tema": "vivienda", "n": 1}, {"medio": "laopinion", "tema": "migracion", "n": 1}, {"medio": "diariodeavisos", "tema": "vivienda", "n": 2}, {"medio": "eldia", "tema": "politica", "n": 3}, {"medio": "eldia", "tema": "migracion", "n": 2}, {"medio": "eldia", "tema": "sanidad", "n": 2}, {"medio": "eldia", "tema": "vivienda", "n": 2}, {"medio": "eldia", "tema": "turismo", "n": 1}, {"medio": "eldia", "tema": "violencia_genero", "n": 1}, {"medio": "laprovincia", "tema": "politica", "n": 9}, {"medio": "laprovincia", "tema": "medio_ambiente", "n": 5}, {"medio": "laprovincia", "tema": "turismo", "n": 1}, {"medio": "laprovincia", "tema": "sanidad", "n": 1}, {"medio": "laprovincia", "tema": "presupuestos", "n": 1}, {"medio": "canarias7", "tema": "vivienda", "n": 2}, {"medio": "atlanticohoy", "tema": "vivienda", "n": 4}, {"medio": "atlanticohoy", "tema": "presupuestos", "n": 3}, {"medio": "atlanticohoy", "tema": "violencia_genero", "n": 2}, {"medio": "atlanticohoy", "tema": "turismo", "n": 2}, {"medio": "atlanticohoy", "tema": "sanidad", "n": 1}, {"medio": "canariasahora", "tema": "economia", "n": 2}, {"medio": "canariasahora", "tema": "vivienda", "n": 3}, {"medio": "canariasahora", "tema": "salud_mental", "n": 1}, {"medio": "canariasahora", "tema": "presupuestos", "n": 2}, {"medio": "canarias7", "tema": "salud_mental", "n": 1}];
+const TD=[{"medio": "canarias7", "hora": "2026-03-16T14:00", "n": 2}, {"medio": "atlanticohoy", "hora": "2026-03-16T15:00", "n": 24}, {"medio": "canarias7", "hora": "2026-03-16T15:00", "n": 2}, {"medio": "canariasahora", "hora": "2026-03-16T15:00", "n": 20}, {"medio": "canarias7", "hora": "2026-03-16T16:00", "n": 32}, {"medio": "diariodeavisos", "hora": "2026-03-16T16:00", "n": 13}, {"medio": "eldia", "hora": "2026-03-16T16:00", "n": 18}, {"medio": "laopinion", "hora": "2026-03-16T16:00", "n": 17}, {"medio": "laprovincia", "hora": "2026-03-16T16:00", "n": 19}, {"medio": "canarias7", "hora": "2026-03-16T17:00", "n": 1}, {"medio": "atlanticohoy", "hora": "2026-03-17T10:00", "n": 4}, {"medio": "canarias7", "hora": "2026-03-17T10:00", "n": 34}, {"medio": "canariasahora", "hora": "2026-03-17T10:00", "n": 14}, {"medio": "diariodeavisos", "hora": "2026-03-17T10:00", "n": 14}, {"medio": "eldia", "hora": "2026-03-17T10:00", "n": 3}, {"medio": "laopinion", "hora": "2026-03-17T10:00", "n": 2}, {"medio": "laprovincia", "hora": "2026-03-17T10:00", "n": 1}];
+const NW=[{"titulo": "El PSOE acusa al presidente Clavijo de falso triunfalismo tras el nuevo suspenso de Canarias en dependencia", "medio": "diariodeavisos", "temas": ["politica", "sanidad", "dependencia_discapacidad"], "url": "https://diariodeavisos.elespanol.com/2026/03/psoe-acusa-clavijo-triunfalismo-dependencia/"}, {"titulo": "La Fiscalía archiva la investigación sobre el pendrive de la 'fontanera' d al no hallar indicios de nuevos delitos", "medio": "canarias7", "temas": ["presupuestos", "politica"], "url": "https://www.canarias7.es/nacional/politica/fiscalia-archiva-investigacion-sobre-pendrive-fontanera-hallar-20260317111622-ntrc.html"}, {"titulo": "Ni hijos ni la compra: esta es la deducción que más dinero devuelve en la Renta en Canarias en 2026", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/economia/deduccion-mas-dinero-devuelve-declaracion-renta-canarias-2026_1558630_102.html"}, {"titulo": "Llega una nueva borrasca a Canarias: previsión de fuertes lluvias y nieve", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/sociedad/llega-nueva-borrasca-canarias-prevision-fuertes-lluvias-nieve_1558745_102.html"}, {"titulo": "La actividad sismovolcánica detectada en febrero en Tenerife se mantiene, pero pierde intensidad", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/tenerife/actividad-sismovolcanica-detectada-en-febrero-en-tenerife-se-mantiene-pero-pierde-intensidad_1558774_102.html"}, {"titulo": "El administrador de RTVC achaca la \"cascada\" de dimisiones desde su llegada a \"motivos personales\"", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/politica/administrador-rtvc-achaca-cascada-dimisiones-su-llegada-motivos-personales_1558772_102.html"}, {"titulo": "Gran Canaria, siglos XI a XIV: una isla de niños pescadores", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/patrimonio-canarias/gran-canaria-siglos-xi-xiv-isla-ninos-pescadores_1_13038721.html"}, {"titulo": "Una asociación pide al Gobierno de España declarar en situación crítica a una mariposa endémica de Canarias", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/asociacion-pide-gobierno-espana-declarar-situacion-critica-mariposa-endemica-canarias_1_13053691.html"}, {"titulo": "Ecologistas piden al Gobierno más protección para las ballenas y cetáceos y sus hábitats en varias regiones del país, entre ellas Canarias", "medio": "canariasahora", "temas": ["violencia_genero", "medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/proteccion-ballenas-cetaceos-canarias_1_13005078.html"}, {"titulo": "Hallazgo inédito en una excavación arqueológica a los pies del Roque Bentayga", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/patrimonio-canarias/hallazgo-inedito-excavacion-arqueologica-pies-roque-bentayga_1_13051923.html"}, {"titulo": "Tablas en el segundo derbi chico de la temporada", "medio": "canariasahora", "temas": ["turismo"], "url": "https://www.eldiario.es/canariasahora/Deportes/futbol/tablas-segundo-derbi-chico-temporada_1_13060804.html"}, {"titulo": "Un vacío legal de 21 años mantiene vivo un proyecto de extracción de áridos en un espacio protegido en Fuerteventura", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/vacio-legal-21-anos-mantiene-vivo-proyecto-extraccion-aridos-espacio-protegido-fuerteventura_1_13047051.html"}, {"titulo": "Hallado un fósil de cardón sepultado hace 312.000 años por la erupción de un volcán en Tenerife", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/cardon-fosil-tenerife-rareza-mundial-amenazado-futuro-parque-eolico_1_13067444.html"}, {"titulo": "Un total de 12.130 mujeres canarias han sido diagnosticadas de endometriosis", "medio": "canariasahora", "temas": ["sanidad"], "url": "https://www.eldiario.es/canariasahora/sociedad/total-12-130-mujeres-canarias-han-sido-diagnosticadas-endometriosis_1_13066857.html"}, {"titulo": "Muere el botánico y Premio Canarias Wolfredo Wildpret de la Torre a los 92 años", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/sociedad/muere-botanico-premio-canarias-wolfredo-wildpret-torre-92-anos_1_13067004.html"}, {"titulo": "Detenido en Arrecife un hombre de 69 años por un delito contra la libertad sexual de un menor tutelado", "medio": "canariasahora", "temas": ["dependencia_discapacidad"], "url": "https://www.eldiario.es/canariasahora/sociedad/detenido-arrecife-hombre-69-anos-delito-libertad-sexual-menor-tutelado_1_13068199.html"}, {"titulo": "En Canarias se espera 430 días por la ayuda a la dependencia y el año pasado murieron en la lista más de 2.000 personas", "medio": "canariasahora", "temas": ["sanidad", "dependencia_discapacidad"], "url": "https://www.eldiario.es/canariasahora/sociedad/canarias-espera-430-dias-ayuda-dependencia-ano-pasado-murieron-lista-2-000-personas_1_13067171.html"}, {"titulo": "Detectados 84 terremotos el fin de semana en el Teide", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/terremotos-teide-hoy-tenerife_1_13071584.html"}, {"titulo": "Antonio Alarcó reclama desde la Diputación del Común medidas urgentes para paliar los efectos de la COVID persistente", "medio": "canariasahora", "temas": ["politica", "sanidad"], "url": "https://www.eldiario.es/canariasahora/politica/antonio-alarco-reclama-diputacion-comun-medidas-urgentes-paliar-efectos-covid-persistente_1_13071725.html"}, {"titulo": "Aemet activa los primeros avisos por el temporal de esta semana en Canarias", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/avisos-aemet-canarias-temporal-borrasca-alerta_1_13072409.html"}, {"titulo": "Por solo 350 euros y 1.400 destinos: el nuevo programa de viajeros para los mayores de 55 años de Móstoles", "medio": "laopinion", "temas": ["turismo"], "url": "https://www.laopinion.es/es/madrid/mostoles/20260316/77000-vecinos-mostoles-mayores-de-55-anos-podran-viajar-desde-350-euros-128023411"}, {"titulo": "Abascal acusa a Feijóo de \"zancadillear\" las negociaciones y asegura que quieren gobernar en Extremadura, Aragón y Castilla y León", "medio": "laopinion", "temas": ["politica"], "url": "https://www.elperiodico.com/es/politica/20260316/abascal-feijoo-zancadillear-negociaciones-gobernar-extremadura-128027808"}, {"titulo": "Potaje meteorológico este lunes en Canarias antes de la llegada de la borrasca ‘Samuel’", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/tiempo-canarias-lunes-16-marzo-potaje-borrasca-samuel/"}, {"titulo": "Así es la borrasca Samuel: un sistema “muy profundo” con potencial para dejar hasta 150 litros en Canarias", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/asi-es-borrasca-samuel-canarias-prevision-lluvias-fuertes/"}, {"titulo": "Primeros efectos de la borrasca Samuel en Canarias: la Aemet activa avisos para el miércoles", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/borrasca-samuel-canarias-avisos-aemet/"}, {"titulo": "Confirmado por la Aemet: “Canarias será la zona de España más afectada por la borrasca Therese”", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/borrasca-therese-canarias-aemet-zona-mas-afectada-espana/"}, {"titulo": "Therese, la última borrasca de este invierno, traerá lluvia, viento y nieve a Canarias", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/therese-borrasca-prevision-hoy-canarias/"}, {"titulo": "CC pide ahora al Gobierno central que baje el IGIC para paliar el alza del combustible", "medio": "diariodeavisos", "temas": ["politica", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/cc-pide-rebaja-igic-canarias-crisis-combustible/"}, {"titulo": "El PSOE pide parar el carril bici hasta que se creen aparcamientos en El Médano", "medio": "diariodeavisos", "temas": ["politica"], "url": "https://diariodeavisos.elespanol.com/2026/03/psoe-parar-carril-bici-aparcamientos-el-medano/"}, {"titulo": "Las RUP cierran filas contra el nuevo marco financiero de la UE", "medio": "diariodeavisos", "temas": ["presupuestos", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/las-rup-cierran-filas-contra-el-nuevo-marco-financiero-de-la-ue/"}, {"titulo": "Costa Adeje Egatesa-Atlético de Madrid: un partido para la historia en el Heliodoro", "medio": "diariodeavisos", "temas": ["migracion"], "url": "https://diariodeavisos.elespanol.com/2026/03/costa-adeje-egatesa-atletico-de-madrid-copa-de-la-reina/"}, {"titulo": "El drama invisible del Covid persistente en Canarias: 70.000 afectados denuncian su abandono", "medio": "diariodeavisos", "temas": ["sanidad", "violencia_genero"], "url": "https://diariodeavisos.elespanol.com/2026/03/70000-afectados-covid-persistente-canarias-denuncian-abandono/"}, {"titulo": "¿Cuándo empezará a llover en Canarias? La Aemet avisa de chubascos y desplome de temperaturas", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/aemet-tiempo-canarias-17-febrero-lluvia/"}, {"titulo": "Canarias sigue a la cola de los salarios en España: el Archipiélago es la segunda comunidad con las retribuciones más precarias", "medio": "diariodeavisos", "temas": ["economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/canarias-segundo-salario-mas-bajo/"}, {"titulo": "Pánico en el sur de Tenerife por un asalto con detonaciones: usan una pistola de gas para robar a turistas", "medio": "diariodeavisos", "temas": ["turismo"], "url": "https://diariodeavisos.elespanol.com/2026/03/asalto-detonaciones-tenerife-sur-turistas/"}, {"titulo": "El precio de la gasolina y diésel hoy lunes: las gasolineras más baratas de la provincia de Santa Cruz de Tenerife", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/economia/2026/03/16/precio-gasolina-diesel-hoy-lunes-128014331.html"}, {"titulo": "Actualización de la actividad sismovolcánica en Tenerife: 84 terremotos registrados en el Teide este fin de semana", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/16/actualizacion-actividad-sismovolcanica-tenerife-84-128022085.html"}, {"titulo": "La Aemet anuncia tiempo \"muy adverso\" en Canarias con chubascos acompañados de tormentas", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/canarias/2026/03/16/aemet-anuncia-tiempo-adverso-canarias-dv-128021298.html"}, {"titulo": "Un trabajador de 71 años pierde su jubilación por no pagar una deuda de 13.903,14 euros con la Seguridad Social", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/economia/2026/03/15/trabajador-71-anos-pierde-jubilacion-pension-dv-127869778.html"}, {"titulo": "Manuel Romera: «El estado del bienestar es sostenible, pero solo si hay un equilibrio entre gastos e ingresos»", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/manuel-romera-estado-bienestar-sostenible-solo-equilibrio-20260314220351-nt.html"}, {"titulo": "Siete vidas varadas tras el mayor alijo de cocaína de Canarias", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/siete-vidas-varadas-tras-mayor-alijo-cocaina-20260315080000-nt.html"}, {"titulo": "La Aemet avisa de lo que está por llegar a Canarias con una nueva borrasca a finales de la semana", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/canarias/aemet-avisa-llegar-canarias-finales-semana-20260316070000-nt.html"}, {"titulo": "La factura de la guerra para el bolsillo: del depósito del coche a la cesta de la compra", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/factura-guerra-bolsillo-deposito-coche-cesta-compra-20260315004030-ntrc.html"}, {"titulo": "Las borrascas dejan sin patio al instituto de La Vega de San José: «Es alarmante»", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/sociedad/educacion/borrascas-dejan-patio-instituto-vega-san-jose-20260316223757-nt.html"}, {"titulo": "Las Cañadas del Teide registra 84 terremotos durante el fin de semana", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/sociedad/ciencia/canadas-teide-registra-terremotos-fin-semana-20260316105109-nt.html"}, {"titulo": "Seis meses de prisión por vender lentillas de colores sin control sanitario en Canarias", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/sociedad/salud/seis-meses-prision-vender-lentillas-colores-control-20260316121939-nt.html"}, {"titulo": "Canarias y Estado asumen que no se cumplirá el plazo para la reubicación de los menores", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/politica/canarias-estado-asumen-cumplira-plazo-reubicacion-menores-20260316080000-nt.html"}, {"titulo": "¿Qué pasará con la gratuidad de las guaguas si se mantienen los precios de la gasolina?", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/pasara-gratuidad-guaguas-mantienen-precios-gasolina-20260317070000-nt.html"}, {"titulo": "Los camioneros canarios afrontan un sobrecoste de 400 euros al mes por el alza del combustible", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/camioneros-canarios-afrontan-sobrecoste-400-euros-mes-20260317070000-nt.html"}, {"titulo": "Sólo dos localidades de Canarias disfrutarán de un día festivo antes de la Semana Santa", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/solo-dos-localidades-canarias-disfrutaran-dia-festivo-20260317070000-nt.html"}, {"titulo": "Ampliación del Centro de Educación Especial Nuestra Señora de Los Volcanes", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/canarias/lanzarote/ampliacion-centro-educacion-especial-senora-volcanes-20260317072300-nt.html"}, {"titulo": "El exDAO de la Policía llega al juzgado para declarar por la denuncia de violar a una subordinada", "medio": "canarias7", "temas": ["violencia_genero", "politica"], "url": "https://www.canarias7.es/nacional/politica/exdao-acusado-violar-subordinada-presunta-victima-comparecen-20260317072318-ntrc.html"}, {"titulo": "San Bartolomé de Tirajana archiva el rescate de la concesión del hotel Las Tirajanas", "medio": "canarias7", "temas": ["migracion", "turismo"], "url": "https://www.canarias7.es/canarias/gran-canaria/san-bartolome-tirajana-archiva-rescate-concesion-hotel-20260317073000-nt.html"}, {"titulo": "Todos los partidos políticos canarios invocan el llamado voto útil para sí", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/politica/partidos-politicos-canarios-invocan-llamado-voto-util-20260317073000-nt.html"}, {"titulo": "La defensa como industria", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/opinion/firmas/juan-pablo-riesgo-defensa-industria-20260317073000-nt.html"}, {"titulo": "Guacimeta, décima plaza nacional en viajeros y vuelos", "medio": "canarias7", "temas": ["turismo"], "url": "https://www.canarias7.es/canarias/lanzarote/guacimeta-decima-plaza-nacional-viajeros-vuelos-20260317073900-nt.html"}, {"titulo": "Impresentable presidente", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/opinion/firmas/juan-francisco-ferre-impresentable-presidente-20260317074500-nt.html"}, {"titulo": "Cambio radical del tiempo en Canarias: la borrasca Therese trae fuertes lluvias y la Aemet ya señala las islas de mayor impacto", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/canarias/cambio-radical-tiempo-canarias-borrasca-therese-trae-20260317070000-nt.html"}, {"titulo": "575 menores migrantes, pendientes de su expediente para salir de Canarias", "medio": "canarias7", "temas": ["migracion", "politica"], "url": "https://www.canarias7.es/politica/575-menores-migrantes-pendientes-expediente-salir-canarias-20260317080000-nt.html"}, {"titulo": "Las gasolineras más económicas de Las Palmas este martes: precios de gasolina y diésel", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/gasolineras-economicas-palmas-martes-precios-gasolina-diesel-20260317071007-nt.html"}, {"titulo": "Descubre las gasolineras con los precios más bajos este martes en Santa Cruz de Tenerife", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/descubre-gasolineras-precios-bajos-martes-santa-cruz-20260317071407-nt.html"}, {"titulo": "'Torrente presidente' supera los 2 millones de euros en un día y es el mejor estreno español en 15 años", "medio": "canarias7", "temas": ["presupuestos"], "url": "https://www.canarias7.es/pantallas/cine/torrente-presidente-supera-millones-euros-dia-mejor-20260314122953-ntrc.html"}, {"titulo": "Los talibanes acusan a Pakistán de matar a más de 400 personas en el bombardeo contra un hospital en Kabul", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/internacional/asia/talibanes-acusan-pakistan-matar-200-personas-hospital-20260316235045-ntrc.html"}, {"titulo": "La «ruina» por no tener alta velocidad en Málaga en Semana Santa: más de 1.300 millones", "medio": "canarias7", "temas": ["economia", "presupuestos"], "url": "https://www.canarias7.es/economia/ruina-tener-alta-velocidad-malaga-semana-santa-20260317083716-ntrc.html"}, {"titulo": "La UCO vigiló por Madrid al expresidente de la Diputación de Almería en un viaje «personal» pagado con dinero público", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/nacional/politica/uco-vigilo-madrid-expresidente-diputacion-almeria-viaje-20260317084759-ntrc.html"}, {"titulo": "Las Bolsas extreman la cautela a la espera de los bancos centrales", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/mercados/bolsas-extreman-cautela-espera-bancos-centrales-20260317090706-ntrc.html"}, {"titulo": "Recorrido de la CANARIAS7 Carrera de las Empresas 2026: calles, horario de salida y mapa de la carrera", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/carrera-de-las-empresas/recorrido-canarias7-carrera-empresas-2026-calles-horario-20260316173620-nt.html"}, {"titulo": "La borrasca Therese en Canarias: última hora de sus efectos y alertas activas", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/canarias/borrasca-therese-canarias-ultima-hora-efectos-alertas-20260317084205-di.html"}, {"titulo": "Indra se desploma en Bolsa tras un nuevo intento de Moncloa de destituir a Ángel Escribano", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/empresas/indra-desploma-bolsa-tras-nuevo-intento-moncloa-20260317101128-ntrc.html"}, {"titulo": "Los supermercados deberán etiquetar en braille alimentos con alérgenos y sustancias peligrosas", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/sociedad/supermercados-deberan-etiquetar-braille-alimentos-alergenos-sustancias-20260317104741-ntrc.html"}, {"titulo": "Francisca Cadenas abrió la puerta y vio al detenido por su asesinato esnifando, asegura la defensa", "medio": "canarias7", "temas": ["violencia_genero"], "url": "https://www.canarias7.es/sociedad/francisca-cadenas-abrio-puerta-vio-detenido-asesinato-20260317105939-ntrc.html"}, {"titulo": "Tres de cada cuatro medidores urbanos de contaminación están mal ubicados", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/sociedad/salud/tres-cuatro-medidores-urbanos-contaminacion-mal-ubicados-20260317173134-ntrc.html"}, {"titulo": "Sánchez pone el foco en la subida de Vox y se presenta como único «dique» de contención posible", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/nacional/politica/sanchez-pone-foco-subida-vox-presenta-unico-20260316170125-ntrc.html"}, {"titulo": "Andalucía aprueba 36 millones para alquilar quirófanos con enfermeros y anestesistas en clínicas de Sevilla: los recursos públicos son \"insuficientes\"", "medio": "laopinion", "temas": ["sanidad", "presupuestos"], "url": "https://www.elcorreoweb.es/andalucia/2026/03/16/sas-aprueba-millones-alquilar-clinicas-privadas-sevilla-operaciones-127929164.html"}, {"titulo": "Moeve Fútbol Zone 1x17: debate sobre la jornada 28 y nueva ‘Unpopular Opinion’", "medio": "laopinion", "temas": ["politica"], "url": "https://www.laopinion.es/es/deportes/20260316/moeve-futbol-zone-1x17-debate-bc-128015153"}, {"titulo": "Dani Martín y Viva Suecia lideran un cartel de leyenda en Madrid", "medio": "laopinion", "temas": ["medio_ambiente"], "url": "https://www.laopinion.es/es/sociedad/20260312/dani-martin-viva-suecia-lideran-bc-127902756"}, {"titulo": "Los médicos arrancan una nueva semana de huelga: acusan a Sanidad de \"intensificar los ataques contra el colectivo\"", "medio": "laopinion", "temas": ["sanidad"], "url": "https://www.elperiodico.com/es/sanidad/20260316/medicos-arrancan-nueva-semana-huelga-sanidad-intensificar-ataques-colectivo-128016521"}, {"titulo": "¿Solución o espejismo? Los fondos de infraestructuras irrumpen en el sector de la vivienda en España", "medio": "laopinion", "temas": ["economia", "presupuestos", "vivienda"], "url": "https://www.elperiodico.com/es/economia/20260316/fondos-infraestructuras-vivienda-espana-127931743"}, {"titulo": "Así será Madrid Puerta Oeste, uno de los polígonos más grandes de España, capaz de crear 6.000 nuevos empleos", "medio": "laopinion", "temas": ["economia"], "url": "https://www.laopinion.es/es/madrid/mostoles/20260316/sera-madrid-puerta-oeste-poligonos-128022408"}, {"titulo": "Eurocaja Rural consolida su modelo de negocio de banca cercana: beneficio de 122 millones de euros en 2025 e incremento de su fortaleza financiera", "medio": "laopinion", "temas": ["presupuestos"], "url": "https://www.laopinion.es/es/actualidad/20260312/eurocaja-rural-consolida-modelo-negocio-banca-cercana-beneficio-122-millones-127889779"}, {"titulo": "Mbappé y Bellingham se apuntan a Manchester, aunque arrancarán en el banquillo", "medio": "laopinion", "temas": ["politica"], "url": "https://www.laopinion.es/es/madrid/20260316/mbappe-bellingham-apuntan-manchester-real-madrid-128019433"}, {"titulo": "Madrid exige la dimisión del secretario LGTBI del PSOE en Valencia que criticó a los homosexuales de derechas", "medio": "laopinion", "temas": ["politica"], "url": "https://www.laopinion.es/es/madrid/20260316/madrid-exige-dimision-secretario-lgtbi-128018789"}, {"titulo": "El limbo de las 2.000 casas ilegales en Mejorada del Campo, a solo nueve kilómetros de Madrid: \"Pagamos impuestos pero no tenemos servicios\"", "medio": "laopinion", "temas": ["presupuestos"], "url": "https://www.laopinion.es/es/madrid/20260315/limbo-2-000-casas-ilegales-mejorada-campo-127996067"}, {"titulo": "Madrid marca seis tendencias clave en su Semana de la Moda que dominarán los próximos meses", "medio": "laopinion", "temas": ["medio_ambiente"], "url": "https://www.laopinion.es/es/madrid/20260316/madrid-marca-seis-tendencias-clave-semana-moda-128025590"}, {"titulo": "El neón de Schweppes en Gran Vía se apagará el 28 de marzo para sumarse a 'La Hora del Planeta'", "medio": "laopinion", "temas": ["politica", "medio_ambiente"], "url": "https://www.laopinion.es/es/madrid/20260316/neon-schweppes-gran-via-apagara-hora-planeta-128021492"}, {"titulo": "En el hospital no trasplantador en que más órganos se donan de Madrid: \"Escoger el momento para plantear la donación a los familiares es fundamental\"", "medio": "laopinion", "temas": ["sanidad"], "url": "https://www.laopinion.es/es/madrid/20260316/hospital-trasplantador-organos-donan-madrid-127976821"}, {"titulo": "Sánchez responde a las amenazas de Trump que las relaciones comerciales con España se abordan en el marco de la UE", "medio": "laopinion", "temas": ["migracion", "medio_ambiente"], "url": "https://www.elperiodico.com/es/politica/20260316/sanchez-amenazas-trump-ue-aranceles-128024075"}, {"titulo": "El Gobierno aprobará el plan 'antiinflación' en un Consejo de Ministros extraordinario este viernes", "medio": "laopinion", "temas": ["economia", "politica"], "url": "https://www.elperiodico.com/es/politica/20260316/consejo-ministros-extraordinario-medidas-guerra-128018955"}, {"titulo": "Podemos en CyL defiende que fue un \"error\" no pactar con IU y pide \"rectificar el rumbo\"", "medio": "laopinion", "temas": ["politica"], "url": "https://www.elperiodico.com/es/politica/20260316/podemos-cyl-error-pactar-iu-rectificar-rumbo-128025917"}, {"titulo": "Feijóo advierte tres veces a Abascal que \"ya está bien\" y le pide apoyar gobiernos del PP en Extremadura, Aragón y Castilla y León", "medio": "laopinion", "temas": ["politica"], "url": "https://www.elperiodico.com/es/politica/20260316/feijoo-reune-lunes-plana-mayor-pp-bano-masas-manueco-elecciones-castilla-leon-128019143"}, {"titulo": "Partido de ensueño de La Laguna Tenerife ante el Valencia BC (89-71)", "medio": "diariodeavisos", "temas": ["politica"], "url": "https://diariodeavisos.elespanol.com/2026/03/directo-la-laguna-tenerife-valencia-bc/"}, {"titulo": "El Costa Adeje Tenerife Egatesa se llena de moral con una goleada sobre el Levante       (4-0)", "medio": "diariodeavisos", "temas": ["migracion"], "url": "https://diariodeavisos.elespanol.com/2026/03/el-costa-adeje-tenerife-egatesa-se-llena-de-moral-con-una-goleada-sobre-el-levante-4-0/"}, {"titulo": "Alejandro Martínez: “Tenemos que aprender a gestionar mejor las emociones de los jugadores”", "medio": "diariodeavisos", "temas": ["politica", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/alejandro-martinez-tenemos-que-aprender-a-gestionar-mejor-las-emociones-de-los-jugadores/"}, {"titulo": "Gran Hotel Taoro: el regreso de un icono", "medio": "diariodeavisos", "temas": ["turismo"], "url": "https://diariodeavisos.elespanol.com/2026/03/gran-hotel-taoro-regreso-icono/"}, {"titulo": "Ya es oficial: el plan del Gobierno de Canarias para que los jóvenes que se fueron puedan volver a las Islas", "medio": "diariodeavisos", "temas": ["politica"], "url": "https://diariodeavisos.elespanol.com/2026/03/plan-gobierno-retorno-talento-canario-oficial/"}, {"titulo": "Una empresa construye en Adeje la primera vivienda impresa en 3D", "medio": "diariodeavisos", "temas": ["vivienda", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/empresa-construye-vivienda-3d/"}, {"titulo": "Adú, el niño de 12 años al que no dejan jugar en Tenerife por ser africano, escribe a la FIFA: “No voy a los partidos porque me desconsuelo”", "medio": "diariodeavisos", "temas": ["politica"], "url": "https://diariodeavisos.elespanol.com/2026/03/adu-menor-tenerife-escribe-fifa-jugar/"}, {"titulo": "Calima, viento y mala mar: la Aemet actualiza los avisos en Canarias", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/calima-viento-mala-mar-aemet-avisos-canarias-fin-semana/"}, {"titulo": "¿Cuándo llega el temporal? Mario Picazo avisa del impacto inminente de la borrasca Samuel en Canarias", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/borrasca-samuel-canarias-mario-picazo-cuando-llega-temporal/"}, {"titulo": "El drama de los 7 marinos coaccionados en el mayor alijo de cocaína europeo: atrapados en Tenerife sin pasaporte, sin dinero y en la calle", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/marinos-mayor-alijo-cocaina-atrapados-tenerife/"}, {"titulo": "El aviso de Antonio Alarcó sobre la “bomba biológica” de la covid persistente: 2,4 millones de españoles afectados", "medio": "diariodeavisos", "temas": ["presupuestos"], "url": "https://diariodeavisos.elespanol.com/2026/03/antonio-alarco-medidas-urgentes-covid-persistente-espana/"}, {"titulo": "Hallan un cadáver en avanzado estado de descomposición en la costa de Las Palmas de Gran Canaria", "medio": "diariodeavisos", "temas": ["migracion"], "url": "https://diariodeavisos.elespanol.com/2026/03/cadaver-las-palmas-gran-canria/"}, {"titulo": "Tenerife, como Londres: llega la primera guagua de 2 pisos a la Isla y ya se sabe el trayecto que cubrirá", "medio": "diariodeavisos", "temas": ["vivienda"], "url": "https://diariodeavisos.elespanol.com/2026/03/primera-guagua-dos-pisos-titsa-tenerife/"}, {"titulo": "Un reconocimiento a la excelencia empresarial", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/ideas/Sabadell-premios-empresa-ano-2026/elperiodico-premiados.html"}, {"titulo": "Premios Empresa del año Banco Sabadell", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/ideas/Sabadell-premios-empresa-ano-2026/"}, {"titulo": "Moeve Fútbol Zone 1x17: debate sobre la jornada 28 y nueva ‘Unpopular Opinion’", "medio": "eldia", "temas": ["politica"], "url": "https://www.eldia.es/deportes/2026/03/16/moeve-futbol-zone-1x17-debate-bc-128015156.html"}, {"titulo": "Dani Martín y Viva Suecia lideran un cartel de leyenda en Madrid", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/sociedad/2026/03/12/dani-martin-viva-suecia-lideran-bc-127902740.html"}, {"titulo": "El rincón de este municipio de Tenerife que se ha convertido en parada obligatoria por elaborar un plato único: abierto desde 1955", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/16/rincon-municipio-tenerife-parada-obligatoria-plato-unico-dv-127993198.html"}, {"titulo": "El Costa Adeje Tenerife se agarra a un precedente cercano para remontar ante el Atlético", "medio": "eldia", "temas": ["migracion"], "url": "https://www.eldia.es/deportes/ud-tenerife/2026/03/16/tenerife-atletico-de-madrid-semifinales-copa-de-la-reina-128000495.html"}, {"titulo": "Fernando Clavijo: \"En Canarias el futuro pasa por subir los sueldos\"", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/canarias/2026/03/15/fernando-clavijo-canarias-futuro-pasa-128000221.html"}, {"titulo": "Siete marineros de un buque interceptado con droga en Tenerife, en situación de vulnerabilidad", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/sucesos/sucesos-en-canarias/2026/03/16/siete-marineros-buque-interceptado-droga-128022945.html"}, {"titulo": "Israel anuncia el inicio de una operación terrestre en el Líbano", "medio": "eldia", "temas": ["sanidad"], "url": "https://www.eldia.es/internacional/2026/03/16/israel-anuncia-inicio-operacion-terrestre-libano-128027400.html"}, {"titulo": "Hallan un cadáver en la costa de Las Palmas de Gran Canaria", "medio": "eldia", "temas": ["migracion"], "url": "https://www.eldia.es/sucesos/sucesos-en-canarias/2026/03/16/hallan-cadaver-costa-palmas-gran-128028292.html"}, {"titulo": "El descubrimiento de Urbanismo en Santa Cruz de Tenerife: otras 32 casas más protegidas", "medio": "eldia", "temas": ["vivienda"], "url": "https://www.eldia.es/santa-cruz-de-tenerife/2026/03/16/descubrimiento-urbanismo-santa-cruz-tenerife-127849709.html"}, {"titulo": "Huelga de médicos en Tenerife: los sanitarios salen a la calle este martes para reclamar un estatuto propio", "medio": "eldia", "temas": ["sanidad", "politica", "medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/16/huelga-medicos-tenerife-sanitarios-salen-128019474.html"}, {"titulo": "Trece guaguas de dos pisos recorrerán antes de que acabe del verano las carreteras de Tenerife", "medio": "eldia", "temas": ["vivienda"], "url": "https://www.eldia.es/tenerife/2026/03/16/trece-guguas-pisos-recorreran-acabe-128024451.html"}, {"titulo": "Un juzgado de Tenerife prioriza el cobro de un trabajador frente a los acreedores de su empresa", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/sucesos/tribunales/2026/03/16/juzgado-tenerife-prioriza-cobro-trabajador-128022556.html"}, {"titulo": "La Aemet avisa: calima, viento moderado y lluvia débil este lunes en Tenerife", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/15/aemet-avisa-calima-viento-moderado-127990233.html"}, {"titulo": "El rosario de borrascas que riega la temporada invernal en Canarias", "medio": "eldia", "temas": ["turismo"], "url": "https://www.eldia.es/canarias/2026/03/16/rosario-borrascas-riega-temporada-invernal-128007433.html"}, {"titulo": "El triple asesinato de Piedra Hincada, en Tenerife", "medio": "eldia", "temas": ["violencia_genero"], "url": "https://www.eldia.es/sucesos/sucesos-en-canarias/2026/03/16/triple-asesinato-piedra-hincada-tenerife-128004753.html"}, {"titulo": "La ultraperiferia europea alza una “voz única” desde Canarias en defensa de sus derechos específicos: “No podemos retroceder 20 años”", "medio": "eldia", "temas": ["politica"], "url": "https://www.eldia.es/canarias/2026/03/16/ultraperiferia-europea-alza-voz-unica-128019223.html"}, {"titulo": "La derecha asienta su reino en Castilla y León ante un PSOE que aguanta el tipo", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/espana/2026/03/15/derecha-asienta-reino-castilla-leon-128003339.html"}, {"titulo": "Moeve Fútbol Zone 1x17: debate sobre la jornada 28 y nueva ‘Unpopular Opinion’", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/deportes/2026/03/16/moeve-futbol-zone-1x17-debate-bc-128015131.html"}, {"titulo": "Dani Martín y Viva Suecia lideran un cartel de leyenda en Madrid", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/sociedad/2026/03/12/dani-martin-viva-suecia-lideran-bc-127902742.html"}, {"titulo": "Diversión, adrenalina y relax: crucero con parada en islas privadas", "medio": "laprovincia", "temas": ["turismo"], "url": "https://www.elperiodico.com/cuore/entretenimiento/2026/02/25/diversion-adrenalina-relax-vacaciones-perfectas-bc-126944023"}, {"titulo": "Un reconocimiento a la excelencia empresarial", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/ideas/Sabadell-premios-empresa-ano-2026/elperiodico-premiados.html"}, {"titulo": "Premios Empresa del año Banco Sabadell", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/ideas/Sabadell-premios-empresa-ano-2026/"}, {"titulo": "Piscis lidera el horóscopo del 14 al 20 de marzo: la Luna Nueva abre un ciclo de renovación, según Esperanza Gracia", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/vida-y-estilo/2026/03/14/pronosticos-esperanza-gracia-semana-14-127945814.html"}, {"titulo": "Elecciones 15M en Castilla y León, en directo | El PP gana al alza, el PSOE también sube y Vox se frena pero sigue siendo clave", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/espana/2026/03/15/elecciones-15m-castilla-leon-2026-directo-ultima-hora-jornada-electoral-127976686.html"}, {"titulo": "Valido traslada a Bolaños las propuestas de Coalición Canaria para hacer frente al impacto económico de la guerra de Irán", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/canarias/2026/03/16/valido-trasladado-bolanos-propuestas-coalicion-128021689.html"}, {"titulo": "Lakovic analiza la situación de Metu y Labeyrie en el CB Gran Canaria de cara al partido de la Basketball Champions League ante el Nymburk", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/cb-gran-canaria/2026/03/16/lakovic-analiza-situacion-metu-labeyrie-128021709.html"}, {"titulo": "La FIFA llega este lunes a Gran Canaria y se reúne con el Cabildo", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/deportes-canarias/2026/03/16/fifa-llega-lunes-gran-canaria-128007846.html"}, {"titulo": "Mario Picazo avisa del impacto de la borrasca Samuel: Canarias será la zona de España con más lluvias", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/canarias/2026/03/16/borrasca-samuel-acerca-canarias-mario-128018727.html"}, {"titulo": "Fernando Clavijo: «En Canarias el futuro pasa por subir los sueldos»", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/canarias/2026/03/15/fernando-clavijo-canarias-futuro-pasa-128000219.html"}, {"titulo": "Lauryn Hill, Maroon 5 y Juan Luis Guerra: los nombres que cierran el cartel del GranCa Live Fest 2026 según sus pistas", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/cultura/2026/03/16/lauryn-hill-maroon-5-juan-128026395.html"}, {"titulo": "La huelga nacional de médicos en las instituciones sanitarias del SCS registra un seguimiento del 14% en Canarias", "medio": "laprovincia", "temas": ["sanidad"], "url": "https://www.laprovincia.es/canarias/2026/03/16/huelga-de-medicos-scs-estatuto-marco-instituciones-sanitarias-huelga-nacional-128028972.html"}, {"titulo": "La ultraperiferia europea alza una “voz única” desde Canarias en defensa de sus derechos específicos: “No podemos retroceder 20 años”", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/canarias/2026/03/16/ultraperiferia-europea-alza-voz-unica-128019222.html"}, {"titulo": "Hallan un cadáver en los tetrápodos de la Avenida Marítima de Las Palmas de Gran Canaria", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/sucesos/sucesos-en-canarias/2026/03/16/aparece-cuerpo-vida-tetrapodos-palmas-gran-canaria-128021290.html"}, {"titulo": "Mazazo judicial: un juzgado obliga al Ayuntamiento de Las Palmas de Gran Canaria a abonar 11 millones de euros a los empleados públicos", "medio": "laprovincia", "temas": ["presupuestos", "politica"], "url": "https://www.laprovincia.es/las-palmas/2026/03/11/mazazo-judicial-juzgado-obliga-ayuntamiento-127835384.html"}, {"titulo": "El Ayuntamiento de Las Palmas de Gran Canaria recurre la sentencia que le condena a pagar la productividad a sus trabajadores", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/las-palmas/2026/03/13/ayuntamiento-palmas-gran-canaria-recurre-127920798.html"}, {"titulo": "A vueltas con el Decreto Canarias", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/opinion/firmas/paulino-rivero-vueltas-decreto-canarias-20260315080000-nt.html"}, {"titulo": "La ideología del partido único", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/opinion/firmas/luisa-del-rosario-gonzalez-ideologia-partido-unico-20260315080000-nt.html"}, {"titulo": "Unidad Integral de la Mujer en Hospitales Universitarios San Roque", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/sociedad/salud/bp-unidad-integral-mujer-hospitales-universitarios-san-roque-20260316114945-nt.html"}, {"titulo": "Todas las carreteras cortadas de Gran Canaria y restricciones al tráfico hoy 16 de marzo", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/canarias/gran-canaria/carreteras-cortadas-gran-canaria-restricciones-trafico-hoy-20260316091048-nt.html"}, {"titulo": "El asturiano Arce Montes, el violador errante que dejó una estela criminal de décadas", "medio": "canarias7", "temas": ["violencia_genero"], "url": "https://www.canarias7.es/cronica-negra/asturiano-arce-montes-violador-errante-dejo-estela-20260315071148-ntrc.html#vtm_modulosEngag=historias-visuales:portada:noticia:3"}, {"titulo": "De Castilla y León al Congreso: PP y PSOE perderían escaños en beneficio de Vox", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/elecciones/castilla-y-leon/castilla-leon-congreso-pp-psoe-perderian-escanos-20260316074235-ntrc.html#vtm_modulosEngag=historias-visuales:portada:noticia:2"}, {"titulo": "El embellecimiento de los accesos al aeropuerto deberá estar en medio año", "medio": "canarias7", "temas": ["turismo"], "url": "https://www.canarias7.es/canarias/lanzarote/embellecimiento-accesos-aeropuerto-debera-estar-medio-ano-20260316070500-nt.html"}, {"titulo": "Fuerteventura «suspende» en la creación de vivienda social frente a Tenerife y Gran Canaria", "medio": "canarias7", "temas": ["vivienda"], "url": "https://www.canarias7.es/canarias/fuerteventura/fuerteventura-suspende-creacion-vivienda-social-frente-tenerife-20260316083900-nt.html"}, {"titulo": "El PP frena a Vox con una victoria al alza en Castilla y León y el PSOE gana oxígeno", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/elecciones/castilla-y-leon/pp-frena-vox-victoria-alza-castilla-leon-20260315223811-ntrc.html"}, {"titulo": "La viñeta de Morgan de este lunes 16 de marzo", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/opinion/morgan/vineta-morgan-lunes-marzo-20260316180815-nt.html"}, {"titulo": "El hospital Doctor Negrín busca un tratamiento para la amiloidosis, hasta ahora incurable", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/sociedad/salud/hospital-doctor-negrin-busca-tratamiento-amiloidosis-incurable-20260316071432-nt.html"}, {"titulo": "Operación Ercor: querían distribuir 54 kilos de cocaína por la provincia de Las Palmas", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/canarias/gran-canaria/las-palmas-de-gran-canaria/operacion-ercor-querian-distribuir-kilos-cocaina-provincia-20260316074000-nt.html"}, {"titulo": "Mbappé y Bellingham se apuntan al duelo con el City", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/deportes/futbol/liga-campeones/mbappe-bellingham-apuntan-duelo-city-20260316103314-ntrc.html"}, {"titulo": "Berlín elimina la ventaja para los inmigrantes en el acceso a los empleos públicos", "medio": "canarias7", "temas": ["migracion", "economia"], "url": "https://www.canarias7.es/internacional/europa/berlin-elimina-ventaja-inmigrantes-acceso-empleos-publicos-20260316132406-ntrc.html"}, {"titulo": "El PSOE pide parar de oficio el plan para el desarrollo de las energías renovables", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/canarias/lanzarote/psoe-pide-parar-oficio-plan-desarrollo-energias-20260316124531-nt.html"}, {"titulo": "El Gobierno de Illa urge a ERC: sin Presupuestos «tendrá dificultades para pagar nóminas»", "medio": "canarias7", "temas": ["presupuestos", "politica"], "url": "https://www.canarias7.es/nacional/politica/gobierno-illa-urge-erc-presupuestos-dificultades-pagar-20260316135236-ntrc.html"}, {"titulo": "Los cabildos de Fuerteventura y Lanzarote plantan cara al Gobierno en las renovables", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/canarias/fuerteventura/cabildos-fuerteventura-lanzarote-plantan-cara-gobierno-renovables-20260315222822-nt.html"}, {"titulo": "Rescatan a una mujer de un barranco en Santa María de Guía", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/sucesos/rescatan-mujer-barranco-santa-maria-guia-20260316131057-nt.html"}, {"titulo": "Aston Martin carga de argumentos a Alonso para retirarse de la F1", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/deportes/motor/formula-1/aston-martin-carga-argumentos-alonso-retirarse-20260316141643-ntrc.html"}, {"titulo": "La UCO detecta que el expresidente de la Diputación de Almería habría pagado una hipoteca con dinero «de origen desconocido»", "medio": "canarias7", "temas": ["vivienda", "politica"], "url": "https://www.canarias7.es/nacional/politica/uco-detecta-expresidente-diputacion-almeria-pagado-hipoteca-20260316134851-ntrc.html"}, {"titulo": "La delicada situación financiera de Bertín Osborne con una deuda de más de cuatro millones de euros", "medio": "canarias7", "temas": ["presupuestos"], "url": "https://www.canarias7.es/revista-c7/delicada-situacion-financiera-bertin-osborne-deuda-cuatro-20260316143905-ntrc.html"}, {"titulo": "Kate Middleton revela que abandonó el consumo de alcohol tras su diagnóstico de cáncer", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/revista-c7/kate-middleton-revela-abandono-consumo-alcohol-tras-20260316144935-ntrc.html"}, {"titulo": "Médicos en huelga: «Podemos llegar a trabajar 100 o 110 horas a la semana»", "medio": "canarias7", "temas": ["sanidad", "politica"], "url": "https://www.canarias7.es/sociedad/salud/medicos-huelga-podemos-llegar-trabajar-100-110-20260316141333-nt.html"}, {"titulo": "Abascal mantiene sus premisas negociadoras para entrar con el PP en los gobiernos autonómicos", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/nacional/politica/abascal-mantiene-premisas-negociadoras-entrar-pp-extremadura-20260316141510-ntrc.html"}, {"titulo": "La tarea casi imposible de pedir cita para jubilarse o apuntarse al paro", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/tarea-imposible-pedir-cita-jubilarse-apuntarse-paro-20260316095122-ntrc.html"}, {"titulo": "Feijóo presiona a Vox para desbloquear los gobiernos autonómicos: «No podemos volver a fallar a la gente como el 23-J. Ya está bien»", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/nacional/politica/feijoo-presiona-vox-desbloquear-gobiernos-autonomicos-podemos-20260316143352-ntrc.html"}, {"titulo": "El «palo enorme» de las izquierdas en Castilla y León enciende la luz roja en Podemos", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/nacional/politica/palo-enorme-izquierdas-castilla-leon-enciende-luz-20260316135634-ntrc.html"}, {"titulo": "Antía Castro lidera la marea rosa de más de 3.500 participantes en la Carrera de la Mujer de Gran Canaria", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/sociedad/igualdad/antia-castro-lidera-marea-rosa-3500-participantes-20260315131705-nt.html"}, {"titulo": "La autopsia apunta a que la mujer asesinada por su pareja en Cantabria fue estrangulada", "medio": "canarias7", "temas": ["violencia_genero"], "url": "https://www.canarias7.es/sociedad/guardia-civil-detiene-hombre-presunto-asesinato-pareja-20260315153330-ntrc.html"}, {"titulo": "El Hospital ICOT Ciudad de Telde inaugura el primer servicio de Urgencias 24 horas del municipio", "medio": "canarias7", "temas": ["sanidad"], "url": "https://www.canarias7.es/sociedad/salud/bp-hospital-icot-ciudad-telde-inaugura-primer-servicio-20260316151504-nt.html"}, {"titulo": "Hallan el cadáver de un hombre de avanzada edad en la Avenida Marítima, a la altura del Teatro Pérez Galdós", "medio": "canarias7", "temas": ["medio_ambiente"], "url": "https://www.canarias7.es/sucesos/hallan-cadaver-avenida-maritima-altura-calle-munguia-20260316105402-nt.html"}, {"titulo": "Las entradas para la final de la Champions costarán entre 70 y 950 euros", "medio": "canarias7", "temas": ["migracion"], "url": "https://www.canarias7.es/deportes/futbol/liga-campeones/entradas-final-champions-costaran-950-euros-20260316170226-ntrc.html"}, {"titulo": "Clúster Aeroespacial de Canarias: \"Las islas podrían liderar el lanzamiento de cohetes desde el mar\"", "medio": "atlanticohoy", "temas": ["vivienda", "medio_ambiente"], "url": "https://www.atlanticohoy.com/economia/cluster-aeroespacial-canarias-islas-podrian-liderar-lanzamiento-cohetes-mar_1548058_102.html"}, {"titulo": "Canarias lidera los incentivos regionales con 100 millones y la creación de 400 empleos", "medio": "atlanticohoy", "temas": ["economia", "presupuestos"], "url": "https://www.atlanticohoy.com/empresas/canarias-lidera-incentivos-regionales-con-100-millones-creacion-400-empleos_1549499_102.html"}, {"titulo": "Pedro Alfonso o el arte de tomarse tiempo", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/empresas/pedro-alfonso-arte-tomarse-tiempo_1557695_102.html"}, {"titulo": "Después del 8M, ¿y ahora qué? La desigualdad sigue marcando la vida de las mujeres", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/sociedad/8m-feminismo-canarias-desigualdad-mujeres_1558394_102.html"}, {"titulo": "Rivas (Grupo Ari): “El reto es seguir rompiendo los techos de cristal en las áreas de automoción\"", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/sociedad/rivas-grupo-ari-el-reto-es-seguir-rompiendo-techos-cristal-en-areas-automocion_1558392_102.html"}, {"titulo": "Cómo evitar fraudes al alquilar piso en Canarias: tres claves que debes conocer", "medio": "atlanticohoy", "temas": ["vivienda"], "url": "https://www.atlanticohoy.com/sociedad/como-evitar-fraudes-alquilar-piso-en-canarias-tres-claves-debes-conocer_1558616_102.html"}, {"titulo": "De Tenerife a La Habana: la ciudad canaria que marcó el urbanismo colonial", "medio": "atlanticohoy", "temas": ["vivienda", "medio_ambiente"], "url": "https://www.atlanticohoy.com/tenerife/tenerife-habana-ciudad-canaria-marco-urbanismo-colonial_1558626_102.html"}, {"titulo": "Santa Cruz abre la preinscripción para su Escuela Municipal de Música: así puedes apuntarte", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/santa-cruz/santa-cruz-abre-preinscripcion-su-escuela-municipal-musica-puedes-apuntarte_1558780_102.html"}, {"titulo": "Aparece un cadáver en la zona de los tetrápodos de la avenida Marítima de Las Palmas de Gran Canaria", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/gran-canaria/aparece-cadaver-en-zona-tetrapodos-avenida-maritima-palmas-gran-canaria_1558768_102.html"}, {"titulo": "Sorprenden a un menor de 14 años practicando pesca submarina en la zona de baño de San Andrés", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/santa-cruz/sorprenden-menor-14-anos-practicando-pesca-submarina-en-zona-bano-san-andres_1558782_102.html"}, {"titulo": "Vecinos de Tenerife se rebelan contra una cantera a 50 metros de sus casas que Fiscalía pide cerrar", "medio": "atlanticohoy", "temas": ["presupuestos"], "url": "https://www.atlanticohoy.com/tenerife/vecinos-tenerife-se-rebelan-contra-cantera-50-metros-sus-casas-fiscalia-pide-cerrar_1558696_102.html"}, {"titulo": "Trabajadores de un hotel H10 de Tenerife denuncian en Trabajo presuntas agresiones del jefe de RRHH", "medio": "atlanticohoy", "temas": ["violencia_genero", "turismo"], "url": "https://www.atlanticohoy.com/empresas/trabajadores-hotel-h10-tenerife-denuncian-en-trabajo-presuntas-agresiones-jefe-rrhh_1558606_102.html"}, {"titulo": "Vecinos denuncian que los adoquines rotos de la plaza del Cristo provocan socavones y caídas graves", "medio": "atlanticohoy", "temas": ["violencia_genero"], "url": "https://www.atlanticohoy.com/laguna/vecinos-denuncian-adoquines-rotos-plaza-cristo-provocan-socavones-caidas-graves_1558702_102.html"}, {"titulo": "Ocho de cada diez canarios creen que las empresas no encuentran trabajadores porque pagan poco", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/empresas/ocho-cada-diez-canarios-creen-empresas-no-encuentran-trabajadores-porque-pagan-poco_1558620_102.html"}, {"titulo": "Fedeco avisa que todos los días llega un avión de paquetes asiáticos que ahoga al comercio canario", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/economia/fedeco-avisa-todos-dias-llega-avion-paquetes-asiaticos-ahoga-comercio-canario_1558703_102.html"}, {"titulo": "El PP celebra el primer gran encuentro en La Gomera de cara a las elecciones de 2027", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/politica/pp-celebra-primer-gran-encuentro-en-gomera-cara-elecciones-2027_1558753_102.html"}, {"titulo": "CC plantea al Gobierno medidas económicas para Canarias ante el impacto de la guerra de Irán", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/politica/cc-plantea-gobierno-medidas-economicas-canarias-impacto-guerra-iran_1558754_102.html"}, {"titulo": "San Bartolomé rema a favor de Lopesan en la puja con Martinón por los hoteles de Santana Cazorla", "medio": "atlanticohoy", "temas": ["turismo", "medio_ambiente"], "url": "https://www.atlanticohoy.com/economia/san-bartolome-rema-favor-lopesan-en-puja-con-martinon-por-hoteles-santana-cazorla_1558727_102.html"}, {"titulo": "El Cabildo de Tenerife prevé tener listo este mes el borrador del Plan de Movilidad de Anaga", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/tenerife/cabildo-tenerife-preve-tener-listo-este-mes-borrador-plan-movilidad-anaga_1558759_102.html"}, {"titulo": "Los médicos de Canarias colapsan: huelga indefinida y protestas en diferentes hospitales", "medio": "atlanticohoy", "temas": ["sanidad"], "url": "https://www.atlanticohoy.com/sociedad/medicos-canarias-colapsan-huelga-indefinida-protestas-en-diferentes-hospitales_1558763_102.html"}, {"titulo": "Las RUP fijan una estrategia común para defender sus fondos en el próximo presupuesto de la UE", "medio": "atlanticohoy", "temas": ["presupuestos"], "url": "https://www.atlanticohoy.com/economia/rup-fijan-estrategia-comun-defender-sus-fondos-en-proximo-presupuesto-ue_1558781_102.html"}, {"titulo": "La incertidumbre ante la guerra de Irán y la escalada de precios hace temblar al comercio canario", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/economia/incertidumbre-guerra-iran-escalada-precios-hace-temblar-comercio-canario_1558701_102.html"}, {"titulo": "Arico Somos Todos rechaza el parque eólico marino de Granadilla por su impacto en el litoral", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/tenerife/arico-somos-todos-rechaza-parque-eolico-marino-granadilla-por-su-impacto-en-litoral_1558764_102.html"}, {"titulo": "La primera guagua de dos pisos de Titsa ya está en Tenerife: estas son las líneas donde circulará", "medio": "atlanticohoy", "temas": ["vivienda"], "url": "https://www.atlanticohoy.com/tenerife/primera-guagua-dos-pisos-titsa-ya-esta-en-tenerife-estas-son-lineas-donde-circulara_1558770_102.html"}, {"titulo": "Finca Clavijo, un cementerio del siglo XV que revela el pasado esclavista de la industria azucarera de Canarias", "medio": "canariasahora", "temas": ["economia"], "url": "https://www.eldiario.es/canariasahora/sociedad/finca-clavijo-cementerio-siglo-xv-revela-pasado-esclavista-industria-azucarera-canarias_1_13066993.html"}, {"titulo": "Las 53 viviendas para afectados por el volcán de La Palma que viven en casas contenedor y de madera  “avanza a buen ritmo”", "medio": "canariasahora", "temas": ["vivienda"], "url": "https://www.eldiario.es/canariasahora/lapalmaahora/politica/obra-53-viviendas-llanos-afectados-volcan-residen-casas-contenedor-madera-avanza-buen-ritmo_1_13066835.html"}, {"titulo": "Los vecinos protestan contra el colapso diario de tráfico y de visitantes en Anaga: ''Es una sobreexplotación sin límite''", "medio": "canariasahora", "temas": ["turismo"], "url": "https://www.eldiario.es/canariasahora/tenerifeahora/vecinos-protestan-colapso-diario-trafico-visitantes-anaga-sobreexplotacion-limite_1_13068912.html"}, {"titulo": "Sanidad anuncia que abonará a todos sus trabajadores el cien por cien del incentivo de productividad", "medio": "canariasahora", "temas": ["sanidad"], "url": "https://www.eldiario.es/canariasahora/sociedad/sanidad-anuncia-abonara-trabajadores-cien-cien-incentivo-productividad_1_13066743.html"}, {"titulo": "La Justicia confirma el derecho a disfrutar de siete días de asuntos propios a los médicos del Servicio Canario de Salud", "medio": "canariasahora", "temas": ["sanidad"], "url": "https://www.eldiario.es/canariasahora/tribunales/justicia-confirma-derecho-disfrutar-siete-dias-asuntos-propios-medicos-servicio-canario-salud_1_13065651.html"}, {"titulo": "La Policía Local de Las Palmas para a un taxista por ir fumando y acaba poniéndole varias denuncias", "medio": "canariasahora", "temas": ["violencia_genero"], "url": "https://www.eldiario.es/canariasahora/sucesos/policia-local-palmas-taxista-fumando-acaba-poniendole-denuncias_1_13071212.html"}, {"titulo": "Encontrado el cadáver de un anciano en los tetrápodos de la Avenida Marítima de Las Palmas", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/sucesos/encontrado-cadaver-anciano-tetrapodos-avenida-maritima-palmas_1_13071739.html"}, {"titulo": "El Comisionado para la Reconstrucción de La Palma   reconoce la labor  de Nemesio Pérez", "medio": "canariasahora", "temas": ["vivienda"], "url": "https://www.eldiario.es/canariasahora/lapalmaahora/sociedad/comisionado-reconstruccion-palma-reconoce-labor-nemesio-perez_1_13071779.html"}, {"titulo": "Gana el PP, se recupera el PSOE, Vox toca techo", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/escolar/gana-pp-recupera-psoe-vox-toca-techo_132_13070552.html"}, {"titulo": "La Fundación Juana Reyes pide que la nueva ley de RTVC incluya la salud mental y la promoción de la salud", "medio": "canariasahora", "temas": ["salud_mental", "politica"], "url": "https://www.eldiario.es/canariasahora/sociedad/fundacion-juana-reyes-pide-nueva-ley-rtvc-incluya-salud-mental-promocion-salud_1_13071759.html"}, {"titulo": "El sindicato Asaca denuncia “el caos” del aparcamiento del Hospital Doctor Negrín", "medio": "canariasahora", "temas": ["violencia_genero", "economia", "sanidad"], "url": "https://www.eldiario.es/canariasahora/sociedad/sindicato-asaca-denuncia-caos-aparcamiento-hospital-doctor-negrin_1_13071653.html"}, {"titulo": "El PP coloca a La Gomera como “objetivo prioritario” para 2027", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/lagomeraahora/politica/pp-coloca-gomera-objetivo-prioritario-2027_1_13070873.html"}, {"titulo": "Solo el 6% de los beneficiarios de las ayudas del plátano acapara más de la mitad de hasta 141 millones de euros", "medio": "canariasahora", "temas": ["presupuestos"], "url": "https://www.eldiario.es/canariasahora/eldiario-agricola/agricultura/6-beneficiarios-ayudas-platano-acapara-mitad-141-millones-euros_1_13069330.html"}, {"titulo": "El Supremo estudia un recurso del Gobierno central contra un fallo favorable a subvencionar con 322.000 euros a Los Llanos por el volcán", "medio": "canariasahora", "temas": ["presupuestos", "politica"], "url": "https://www.eldiario.es/canariasahora/lapalmaahora/sociedad/supremo-estudia-recurso-gobierno-centra-contral-fallo-tsjc-favorable-subvencionar-322-000-euros-llanos-volcan_1_13070914.html"}, {"titulo": "Los médicos canarios exigen en una nueva protesta un estatuto propio al Ministerio de Sanidad", "medio": "canariasahora", "temas": ["sanidad", "politica"], "url": "https://www.eldiario.es/canariasahora/sociedad/medicos-canarios-exigen-nueva-protesta-estatuto-propio-ministerio-sanidad_1_13072225.html"}, {"titulo": "Los cabildos de Lanzarote y Fuerteventura rechazan las zonas de aceleración de renovables", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/energia/cabildos-lanzarote-fuerteventura-rechazan-zonas-aceleracion-renovables_1_13071890.html"}, {"titulo": "Las RUP muestran su “rechazo unánime” al nuevo marco financiero de la UE", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/politica/rup-muestran-rechazo-unanime-nuevo-marco-financiero-ue_1_13071541.html"}, {"titulo": "Siete falsedades de Clavijo en el Debate sobre la Nacionalidad Canaria", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/politica/falsedades-clavijo-debate-nacionalidad-canaria_1_13069457.html"}, {"titulo": "Mogán abre una vía para legalizar 37 viviendas en un exclusivo complejo cuatro años después de ordenar su derribo", "medio": "canariasahora", "temas": ["vivienda"], "url": "https://www.eldiario.es/canariasahora/sociedad/mogan-abre-via-legalizar-37-viviendas-exclusivo-complejo-cuatro-anos-despues-ordenar-derribo_1_13063401.html"}, {"titulo": "CC pide que sea el Gobierno de Pedro Sánchez quien baje el IGIC", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/politica/cc-pedro-sanchez-bajar-igic_1_13071082.html"}, {"titulo": "El programa Urdimbre permite que 24 jóvenes extutelados trabajen en fincas del Norte", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/canarias/gran-canaria/programa-urdimbre-permite-jovenes-extutelados-trabajen-fincas-20260316144634-nt.html"}, {"titulo": "Dos detenidos por la supuesta muerte machista de una mujer desaparecida en enero en Huesca", "medio": "canarias7", "temas": ["salud_mental"], "url": "https://www.canarias7.es/sociedad/dos-detenidos-supuesta-muerte-machista-mujer-desaparecida-20260316154559-ntrc.html"}, {"titulo": "La UD y el Cabildo sellan un acuerdo que incluirá la gestión del Estadio de Gran Canaria", "medio": "canarias7", "temas": ["politica"], "url": "https://www.canarias7.es/deportes/cabildo-sellan-acuerdo-incluira-gestion-estadio-gran-20260316141954-nt.html"}, {"titulo": "Ni senderismo, ni bicis, por 11 senderos de Fuerteventura", "medio": "canarias7", "temas": ["politica", "medio_ambiente"], "url": "https://www.canarias7.es/canarias/fuerteventura/senderismo-bicis-senderos-fuerteventura-20260316142624-nt.html"}];
+
+const LM={canarias7:"Canarias7",laprovincia:"La Provincia",eldia:"El Día",laopinion:"La Opinión",diariodeavisos:"Diario de Avisos",atlanticohoy:"Atlántico Hoy",canariasahora:"Canarias Ahora"};
+const LT={politica:"Política",medio_ambiente:"Medio Amb.",economia:"Economía",sanidad:"Sanidad",vivienda:"Vivienda",presupuestos:"Presupuestos",violencia_genero:"Violencia Gén.",turismo:"Turismo",migracion:"Migración",salud_mental:"Salud Mental",dependencia_discapacidad:"Dep. y Discap."};
+
+// ═══════════════════════════════════════════════════════
+//  ESTADO
+// ═══════════════════════════════════════════════════════
+let S={medio:'todos',tema:'todos'};
+const PG={page:0,perPage:8};
+
+// ═══════════════════════════════════════════════════════
+//  TOOLTIP
+// ═══════════════════════════════════════════════════════
+const TIP=document.getElementById('tooltip');
+function tip(e,h){TIP.style.display='block';TIP.innerHTML=h;mvt(e)}
+function mvt(e){const vw=innerWidth,vh=innerHeight,tw=TIP.offsetWidth,th=TIP.offsetHeight;TIP.style.left=(e.clientX+14+tw>vw?e.clientX-tw-6:e.clientX+12)+'px';TIP.style.top=(e.clientY+16+th>vh?e.clientY-th-6:e.clientY+12)+'px'}
+function htip(){TIP.style.display='none'}
+
+// helpers — resolve CSS vars at render time (works for light/dark)
+function cssVar(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+
+// ═══════════════════════════════════════════════════════
+//  DATOS DERIVADOS
+// ═══════════════════════════════════════════════════════
+function filtNW(){let d=NW;if(S.medio!=='todos')d=d.filter(n=>n.medio===S.medio);if(S.tema!=='todos')d=d.filter(n=>n.temas&&n.temas.includes(S.tema));return d}
+function filtMM(){if(S.tema==='todos')return MM.slice().sort((a,b)=>b.total-a.total);const lk={};HM.filter(h=>h.tema===S.tema).forEach(h=>lk[h.medio]=h.n);return MM.map(m=>({...m,total:lk[m.medio]||0})).sort((a,b)=>b.total-a.total)}
+function filtTM(){if(S.medio==='todos')return TM;const lk={};HM.filter(h=>h.medio===S.medio).forEach(h=>lk[h.tema]=h.n);return TM.map(t=>({...t,n:lk[t.tema]||0})).sort((a,b)=>b.n-a.n)}
+function filtTD(){return S.medio==='todos'?TD:TD.filter(d=>d.medio===S.medio)}
+
+// ═══════════════════════════════════════════════════════
+//  ACCIONES
+// ═══════════════════════════════════════════════════════
+function setMedio(m,btn){PG.page=0;S.medio=(S.medio===m&&m!=='todos')?'todos':m;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));redraw()}
+function setTema(t){PG.page=0;S.tema=t;document.getElementById('filtro-tema').value=t;redraw()}
+function resetFiltros(){PG.page=0;S={medio:'todos',tema:'todos'};document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio==='todos'));document.getElementById('filtro-tema').value='todos';redraw()}
+function clkMedio(m){PG.page=0;S.medio=(S.medio===m)?'todos':m;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));redraw()}
+function clkTema(t){PG.page=0;S.tema=(S.tema===t)?'todos':t;document.getElementById('filtro-tema').value=S.tema;redraw()}
+function clkHeat(m,t){if(S.medio===m&&S.tema===t){resetFiltros();return}PG.page=0;S.medio=m;S.tema=t;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));document.getElementById('filtro-tema').value=t;redraw()}
+
+// ═══════════════════════════════════════════════════════
+//  KPIs
+// ═══════════════════════════════════════════════════════
+function updKPIs(){
+  const d=filtNW();const n=d.length;const ct=d.filter(x=>x.temas&&x.temas.length>0).length;
+  document.getElementById('kn').textContent=n;
+  document.getElementById('kct').textContent=ct;
+  document.getElementById('kcob').textContent=n>0?Math.round(ct/n*100)+'%':'—%';
+  const tm=filtTM();const top=tm.find(t=>t.n>0);
+  document.getElementById('ktd').textContent=top?LT[top.tema]||top.tema:'—';
+  document.getElementById('ktdn').textContent=top?`${top.n} menciones`:'';
+  const mf=filtMM();const tm0=mf[0];
+  document.getElementById('kml').textContent=tm0&&tm0.total>0?LM[tm0.medio]||tm0.medio:'—';
+  document.getElementById('kmln').textContent=tm0&&tm0.total>0?`${tm0.total} noticias`:'';
+  document.getElementById('kma').textContent=mf.filter(m=>m.total>0).length;
+  const has=S.medio!=='todos'||S.tema!=='todos';
+  document.getElementById('afbar').classList.toggle('visible',has);
+  const afm=document.getElementById('af-medio'),aft=document.getElementById('af-tema'),afc=document.getElementById('af-count');
+  afm.style.display=S.medio!=='todos'?'inline':'none';afm.textContent=S.medio!=='todos'?`✕ ${LM[S.medio]||S.medio}`:'';
+  aft.style.display=S.tema!=='todos'?'inline':'none';aft.textContent=S.tema!=='todos'?`✕ ${LT[S.tema]||S.tema}`:'';
+  afc.textContent=has?`${n} noticias mostradas`:'';
+}
+
+// ═══════════════════════════════════════════════════════
+//  1. BARRAS MEDIOS
+// ═══════════════════════════════════════════════════════
+function drawB(){
+  const s=d3.select('#cb');s.selectAll('*').remove();
+  const W=s.node().parentElement.clientWidth-4,H=270,m={top:20,right:20,bottom:55,left:38};
+  const w=W-m.left-m.right,h=H-m.top-m.bottom;
+  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
+  const data=filtMM();const mx=d3.max(data,d=>d.total)||1;
+  const x=d3.scaleBand().domain(data.map(d=>d.medio)).range([0,w]).padding(0.3);
+  const y=d3.scaleLinear().domain([0,mx*1.15]).range([h,0]);
+  const border=cssVar('--border');const muted=cssVar('--muted');
+  g.append('g').attr('class','grid').call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat('')).call(g=>g.select('.domain').remove());
+  g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x).tickFormat(d=>LM[d]||d)).selectAll('text').style('text-anchor','end').attr('transform','rotate(-22)').attr('dx','-.4em').attr('dy','.6em').style('font-size','11px').style('font-family','Sora,sans-serif');
+  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+  g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar-i')
+    .attr('x',d=>x(d.medio)).attr('y',d=>y(d.total)).attr('width',x.bandwidth()).attr('height',d=>h-y(d.total))
+    .attr('fill',d=>d.color).attr('rx',5).attr('ry',5)
+    .style('opacity',d=>(S.medio==='todos'||S.medio===d.medio)?1:0.18)
+    .on('mousemove',function(e,d){tip(e,`<strong>${LM[d.medio]||d.medio}</strong>Noticias: <b>${d.total}</b>${S.tema!=='todos'?`<br>Tema: ${LT[S.tema]}`:''}${S.medio===d.medio?'<br><em>↺ Clic para quitar</em>':'<br><em>Clic para filtrar</em>'}`)})
+    .on('mouseleave',htip).on('click',(e,d)=>clkMedio(d.medio));
+  g.selectAll('.bv').data(data).enter().append('text').attr('x',d=>x(d.medio)+x.bandwidth()/2).attr('y',d=>y(d.total)-5).attr('text-anchor','middle').attr('fill',d=>d.color).attr('font-size','11px').attr('font-weight','600').style('opacity',d=>d.total>0?1:0).text(d=>d.total);
+  document.getElementById('chip-b').textContent=`n=${data.reduce((a,b)=>a+b.total,0)}`;
+  document.getElementById('lb').innerHTML=data.map(d=>`<div class="legend-item" onclick="clkMedio('${d.medio}')"><div class="ldot" style="background:${d.color}"></div>${LM[d.medio]||d.medio}</div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  2. LÍNEAS
+// ═══════════════════════════════════════════════════════
+function drawL(){
+  const s=d3.select('#cl');s.selectAll('*').remove();
+  const W=s.node().parentElement.clientWidth-4,H=270,m={top:20,right:20,bottom:55,left:38};
+  const w=W-m.left-m.right,h=H-m.top-m.bottom;
+  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
+  const parse=d3.timeParse('%Y-%m-%dT%H:%M'),fmt=d3.timeFormat('%H:%M');
+  const raw=filtTD().map(d=>({...d,ts:parse(d.hora)}));
+  if(!raw.length){g.append('text').attr('x',w/2).attr('y',h/2).attr('text-anchor','middle').style('fill',cssVar('--muted')).style('font-family','Sora,sans-serif').text('Sin datos para este filtro');return}
+  const allH=[...new Set(TD.map(d=>d.hora))].sort();
+  const medios=S.medio!=='todos'?[S.medio]:[...new Set(TD.map(d=>d.medio))];
+  const series=medios.map(me=>({medio:me,color:CM[me]||'#94a3b8',values:allH.map(h=>{const pt=raw.find(p=>p.medio===me&&p.hora===h);return{ts:parse(h),n:pt?pt.n:0}})}));
+  const x=d3.scaleTime().domain(d3.extent(raw,d=>d.ts)).range([0,w]);
+  const y=d3.scaleLinear().domain([0,(d3.max(raw,d=>d.n)||1)*1.15]).range([h,0]);
+  g.append('g').attr('class','grid').call(d3.axisLeft(y).ticks(4).tickSize(-w).tickFormat('')).call(g=>g.select('.domain').remove());
+  g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x).ticks(6).tickFormat(fmt));
+  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(4));
+  const line=d3.line().x(d=>x(d.ts)).y(d=>y(d.n)).curve(d3.curveMonotoneX);
+  series.forEach(sr=>{
+    g.append('path').datum(sr.values).attr('class','line-path').attr('stroke',sr.color).attr('d',line);
+    g.selectAll(null).data(sr.values.filter(d=>d.n>0)).enter().append('circle').attr('cx',d=>x(d.ts)).attr('cy',d=>y(d.n)).attr('r',4).attr('fill',sr.color).attr('stroke',cssVar('--surface')).attr('stroke-width',1.5)
+      .on('mousemove',(e,d)=>tip(e,`<strong>${LM[sr.medio]||sr.medio}</strong>Hora: ${fmt(d.ts)}<br>Noticias: <b>${d.n}</b>`))
+      .on('mouseleave',htip).on('click',()=>clkMedio(sr.medio));
+  });
+  document.getElementById('ll').innerHTML=series.map(sr=>`<div class="legend-item" onclick="clkMedio('${sr.medio}')"><div class="ldot" style="background:${sr.color}"></div>${LM[sr.medio]||sr.medio}</div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  3. BARRAS TEMAS
+// ═══════════════════════════════════════════════════════
+function drawT(){
+  const s=d3.select('#ct');s.selectAll('*').remove();
+  const body=s.node().parentElement;
+  const data=filtTM();
+  const W=body.clientWidth-4;
+  const minH=330;
+  const H=Math.max(minH, body.clientHeight-4);
+  const m={top:12,right:48,bottom:12,left:132};
+  const w=W-m.left-m.right,h=H-m.top-m.bottom;
+  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
+  const mx=d3.max(data,d=>d.n)||1;
+  const y=d3.scaleBand().domain(data.map(d=>d.tema)).range([0,h]).padding(0.22);
+  const x=d3.scaleLinear().domain([0,mx*1.15]).range([0,w]);
+  g.append('g').attr('class','grid').call(d3.axisTop(x).ticks(5).tickSize(-h).tickFormat('')).call(g=>g.select('.domain').remove());
+  g.append('g').attr('class','axis').call(d3.axisLeft(y).tickFormat(d=>LT[d]||d));
+  g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar-i')
+    .attr('x',0).attr('y',d=>y(d.tema)).attr('width',d=>Math.max(d.n>0?2:0,x(d.n))).attr('height',y.bandwidth())
+    .attr('fill',d=>d.color).attr('rx',4).attr('ry',4)
+    .style('opacity',d=>(S.tema==='todos'||S.tema===d.tema)?1:0.18)
+    .on('mousemove',(e,d)=>tip(e,`<strong>${LT[d.tema]||d.tema}</strong>Menciones: <b>${d.n}</b>${S.medio!=='todos'?`<br>Medio: ${LM[S.medio]}`:''}${S.tema===d.tema?'<br><em>↺ Clic para quitar</em>':'<br><em>Clic para filtrar</em>'}`))
+    .on('mouseleave',htip).on('click',(e,d)=>clkTema(d.tema));
+  g.selectAll('.tv').data(data).enter().append('text').attr('x',d=>x(d.n)+6).attr('y',d=>y(d.tema)+y.bandwidth()/2).attr('dominant-baseline','middle').attr('fill',d=>d.color).attr('font-size','11px').attr('font-weight','600').style('opacity',d=>d.n>0?1:0).text(d=>d.n);
+  document.getElementById('chip-t').textContent=`n=${data.reduce((a,b)=>a+b.n,0)}`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  4. HEATMAP
+// ═══════════════════════════════════════════════════════
+function drawH(){
+  const s=d3.select('#ch');s.selectAll('*').remove();
+  const wrap=s.node().parentElement;
+  const MORD=MM.map(d=>d.medio),TORD=TM.map(d=>d.tema);
+  const minH=330;
+  const lftM=178,topM=58,rgtM=12,btmM=12,cW=115,lineH=14;
+  const targetH=Math.max(minH, wrap.clientHeight-4);
+  const rH=Math.max(28, Math.floor((targetH-topM-btmM)/Math.max(1,TORD.length)));
+  const W=lftM+cW*MORD.length+rgtM,H=topM+TORD.length*rH+btmM;
+  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H).style('min-width',W+'px');
+  const mx=d3.max(HM,d=>d.n)||1;
+  const isDark=document.documentElement.dataset.theme==='dark';
+  const colSc=d3.scaleSequential().domain([0,mx]).interpolator(t=>d3.interpolate(isDark?'#0d1219':'#e8edf5',isDark?'#4f9cf9':'#2563eb')(t));
+
+  // Parte la etiqueta en ≤2 líneas en el último espacio
+  function splitLbl(str){const w=str.split(' ');if(w.length<2)return[str];const m=Math.ceil(w.length/2);return[w.slice(0,m).join(' '),w.slice(m).join(' ')]}
+
+  // Medios en eje X — texto horizontal multi-línea
+  MORD.forEach((m,i)=>{
+    const cx=lftM+i*cW+cW/2,isA=S.medio==='todos'||S.medio===m;
+    const lines=splitLbl(LM[m]||m);
+    const t=s.append('text').attr('text-anchor','middle')
+      .style('fill',isA?cssVar('--text2'):cssVar('--muted')).style('opacity',isA?1:0.4)
+      .style('font-size','12px').style('cursor','pointer').style('font-family','Sora,sans-serif').style('font-weight','500');
+    lines.forEach((ln,li)=>t.append('tspan').attr('x',cx).attr('y',topM-8-(lines.length-1-li)*lineH).text(ln));
+    t.on('click',()=>clkMedio(m))
+     .on('mousemove',(e)=>tip(e,`<strong>Columna: ${LM[m]||m}</strong><em>Clic para filtrar</em>`))
+     .on('mouseleave',htip);
+  });
+
+  // Separador horizontal
+  s.append('line').attr('x1',lftM).attr('y1',topM-1).attr('x2',lftM+cW*MORD.length).attr('y2',topM-1).attr('stroke',cssVar('--border')).attr('stroke-width',1);
+
+  // Celdas
+  TORD.forEach((t,j)=>{
+    MORD.forEach((m,i)=>{
+      const cell=HM.find(d=>d.medio===m&&d.tema===t),val=cell?cell.n:0;
+      const isAC=(S.medio==='todos'||S.medio===m)&&(S.tema==='todos'||S.tema===t),isSel=S.medio===m&&S.tema===t;
+      s.append('rect').attr('class','heatmap-cell')
+        .attr('x',lftM+i*cW+3).attr('y',topM+j*rH+3).attr('width',cW-6).attr('height',rH-6).attr('rx',5).attr('ry',5)
+        .attr('fill',val>0?colSc(val):cssVar('--heat0'))
+        .attr('stroke',isSel?cssVar('--accent'):cssVar('--surface')).attr('stroke-width',isSel?2:1)
+        .style('opacity',isAC?1:0.15)
+        .on('mousemove',(e)=>tip(e,`<strong>${LM[m]||m} × ${LT[t]||t}</strong>Noticias: <b>${val}</b><br><em>Clic para filtrar</em>`))
+        .on('mouseleave',htip).on('click',()=>clkHeat(m,t));
+      if(val>0) s.append('text').attr('x',lftM+i*cW+cW/2).attr('y',topM+j*rH+rH/2)
+        .attr('text-anchor','middle').attr('dominant-baseline','middle')
+        .style('fill',val>mx*0.45?'#fff':cssVar('--text2')).style('font-size','12px').style('font-weight','600').style('font-family','Sora,sans-serif')
+        .style('pointer-events','none').style('opacity',isAC?1:0.15).text(val);
+    });
+  });
+
+  // Grupo congelado (etiquetas de fila) — se renderiza encima y se desplaza con el scroll
+  const bg=cssVar('--surface');
+  const frozen=s.append('g').attr('id','ch-frozen');
+  frozen.append('rect').attr('x',0).attr('y',0).attr('width',lftM-5).attr('height',H).attr('fill',bg);
+  frozen.append('line').attr('x1',lftM-5).attr('y1',topM).attr('x2',lftM-5).attr('y2',H-btmM).attr('stroke',cssVar('--border')).attr('stroke-width',1);
+  TORD.forEach((t,j)=>{
+    const isA=S.tema==='todos'||S.tema===t;
+    frozen.append('text').attr('x',lftM-12).attr('y',topM+j*rH+rH/2).attr('text-anchor','end').attr('dominant-baseline','middle')
+      .style('fill',isA?cssVar('--text2'):cssVar('--muted')).style('opacity',isA?1:0.4)
+      .style('font-size','13px').style('cursor','pointer').style('font-family','Sora,sans-serif')
+      .text(LT[t]||t).on('click',()=>clkTema(t))
+      .on('mousemove',(e)=>tip(e,`<strong>Fila: ${LT[t]||t}</strong><em>Clic para filtrar</em>`))
+      .on('mouseleave',htip);
+  });
+  frozen.attr('transform',`translate(${wrap.scrollLeft},0)`);
+}
+
+function initHeatmapScroller(){
+  const wrap=document.getElementById('hb');
+  if(!wrap||wrap.dataset.bound==='1') return;
+  wrap.dataset.bound='1';
+
+  // Mantiene el grupo de etiquetas visible al hacer scroll horizontal
+  wrap.addEventListener('scroll',()=>{
+    const frozen=document.getElementById('ch-frozen');
+    if(frozen)frozen.setAttribute('transform',`translate(${wrap.scrollLeft},0)`);
+  });
+
+  wrap.addEventListener('wheel',e=>{
+    if(wrap.scrollWidth<=wrap.clientWidth) return;
+    const delta=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+    if(!delta) return;
+    wrap.scrollLeft+=delta;
+    e.preventDefault();
+  },{passive:false});
+
+  let dragging=false,startX=0,startScroll=0;
+  wrap.addEventListener('mousedown',e=>{
+    if(wrap.scrollWidth<=wrap.clientWidth) return;
+    dragging=true;
+    startX=e.clientX;
+    startScroll=wrap.scrollLeft;
+    wrap.classList.add('dragging');
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    wrap.scrollLeft=startScroll-(e.clientX-startX);
+  });
+  const stopDrag=()=>{
+    dragging=false;
+    wrap.classList.remove('dragging');
+  };
+  window.addEventListener('mouseup',stopDrag);
+  wrap.addEventListener('mouseleave',stopDrag);
+}
+
+// ═══════════════════════════════════════════════════════
+//  5. WORD CLOUD
+// ═══════════════════════════════════════════════════════
+function drawWC(){
+  const s=d3.select('#wc');s.selectAll('*').remove();
+  const data=filtNW();
+  const allTitles=(data.length>0?data:NW).map(d=>d.titulo).join(' ');
+  const stop=new Set(['de','la','el','en','a','y','que','los','las','por','con','del','se','un','una','al','es','para','no','su','más','como','ha','lo','le','si','son','sus','sobre','entre','pero','o','también','ya','este','esta','han','hay','ante','fue','ni','muy','hasta','desde','tras','sin','cuando','todo','hace','puede','les','esto','cada','todos','dos','tres','cuatro','cinco','seis','siete','ocho','nuevo','nueva','gran','estos','estas','ser','sido','has','tienen','sera','será','año','años']);
+  const freq={};
+  allTitles.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z\s]/g,' ').split(/\s+/).filter(w=>w.length>3&&!stop.has(w)).forEach(w=>{freq[w]=(freq[w]||0)+1});
+  const words=Object.entries(freq).map(([text,count])=>({text,count})).sort((a,b)=>b.count-a.count).slice(0,55);
+  const ctr=s.node().parentElement;
+  const W=ctr.clientWidth-4,H=420;
+  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+  if(!words.length){s.append('text').attr('x',W/2).attr('y',H/2).attr('text-anchor','middle').style('fill',cssVar('--muted')).text('Sin datos suficientes');return}
+  const maxC=words[0].count,minC=words[words.length-1].count;
+  const sz=d3.scaleLog().domain([Math.max(1,minC),Math.max(2,maxC)]).range([13,48]).clamp(true);
+  const pal=['#4f9cf9','#f97316','#22d3a5','#c084fc','#f43f5e','#fbbf24','#34d399','#a78bfa','#f472b6','#67e8f9','#86efac','#fdba74','#fca5a5'];
+  const g=s.append('g').attr('transform',`translate(${W/2},${H/2})`);
+  const placed=[];
+  words.forEach((w,i)=>{
+    const fs=sz(w.count);
+    const estW=w.text.length*fs*0.56+6;const estH=fs*1.15;
+    const col=pal[i%pal.length];
+    let found=false,ang=0,r=2,step=0.42,tries=0;
+    while(!found&&tries<600){
+      const x=r*Math.cos(ang);const y=r*Math.sin(ang)*0.62;
+      if(Math.abs(x)+estW/2<W/2-4&&Math.abs(y)+estH/2<H/2-4){
+        const ok=placed.every(p=>Math.abs(p.x-x)>(estW/2+p.w/2+3)||Math.abs(p.y-y)>(estH/2+p.h/2+2));
+        if(ok){
+          placed.push({x,y,w:estW,h:estH});
+          const t=g.append('text').attr('class','wc-word').attr('x',x).attr('y',y).attr('text-anchor','middle').attr('dominant-baseline','middle')
+            .style('font-size',`${fs}px`)
+            .style('font-family',fs>24?'Lora,Georgia,serif':'Sora,sans-serif')
+            .style('font-weight',w.count>=5?'600':'400')
+            .style('fill',col).style('opacity',.88).text(w.text);
+          t.on('mousemove',(e)=>{tip(e,`<strong>${w.text}</strong>Frecuencia: <b>${w.count}</b> titular${w.count!==1?'es':''}`);s.classed('wc-hover',true);t.classed('wc-focus',true)})
+            .on('mouseleave',(e)=>{htip(e);s.classed('wc-hover',false);t.classed('wc-focus',false)})
+            .on('click',()=>{
+              document.querySelectorAll('#tb tr').forEach(r=>r.style.background='');
+              let first=null;
+              document.querySelectorAll('#tb tr').forEach(r=>{
+                if(r.querySelector('.tc')?.textContent.toLowerCase().includes(w.text)){r.style.background='rgba(79,156,249,.1)';if(!first)first=r;}
+              });
+              if(first)first.scrollIntoView({behavior:'smooth',block:'nearest'});
+            });
+          found=true;
+        }
+      }
+      ang+=step;r+=0.45;tries++;
+    }
+  });
+  document.getElementById('chip-wc').textContent=`top ${Math.min(words.length,55)} términos`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  6. TABLA CON PAGINACIÓN
+// ═══════════════════════════════════════════════════════
+function goPage(page){
+  PG.page=page;
+  redraw();
+}
+
+function drawTB(){
+  const all=filtNW().filter(n=>n.temas&&n.temas.length>0);
+  const total=all.length;
+  const pages=Math.ceil(total/PG.perPage)||1;
+  if(PG.page>=pages)PG.page=pages-1;
+  const start=PG.page*PG.perPage;
+  const slice=all.slice(start,start+PG.perPage);
+
+  document.getElementById('tc').textContent=`${total} noticias`;
+
+  const tb=document.getElementById('tb');
+  if(!all.length){
+    tb.innerHTML=`<tr><td colspan="4" class="nodata">Sin resultados para el filtro seleccionado</td></tr>`;
+    document.getElementById('pg-bar').style.display='none';
+    return;
+  }
+  document.getElementById('pg-bar').style.display='flex';
+
+  tb.innerHTML=slice.map(n=>`<tr>
+    <td class="tc">${trunc(n.titulo,85)}</td>
+    <td><span class="mbadge" style="background:${CM[n.medio]||'#4f9cf9'}22;color:${CM[n.medio]||'#4f9cf9'};border:1px solid ${CM[n.medio]||'#4f9cf9'}44">${LM[n.medio]||n.medio}</span></td>
+    <td>${(n.temas||[]).map(t=>`<span class="ttag" style="color:${CT[t]||'#4f9cf9'};background:${CT[t]||'#4f9cf9'}15;border-color:${CT[t]||'#4f9cf9'}33">${LT[t]||t}</span>`).join('')}</td>
+    <td><a href="${n.url}" target="_blank" rel="noopener" class="nlink">↗ Ver</a></td>
+  </tr>`).join('');
+
+  document.getElementById('pg-info').textContent=`Mostrando ${start+1}–${Math.min(start+PG.perPage,total)} de ${total}`;
+
+  const btns=document.getElementById('pg-btns');
+  btns.innerHTML='';
+
+  const prev=document.createElement('button');
+  prev.className='pg-btn pg-nav';
+  prev.textContent='‹ Anterior';
+  prev.disabled=PG.page===0;
+  prev.onclick=()=>goPage(PG.page-1);
+  btns.appendChild(prev);
+
+  const maxVisible=5;
+  let pStart=Math.max(0,PG.page-Math.floor(maxVisible/2));
+  let pEnd=Math.min(pages-1,pStart+maxVisible-1);
+  if(pEnd-pStart<maxVisible-1)pStart=Math.max(0,pEnd-maxVisible+1);
+
+  if(pStart>0){
+    const b=document.createElement('button');
+    b.className='pg-btn';
+    b.textContent='1';
+    b.onclick=()=>goPage(0);
+    btns.appendChild(b);
+    if(pStart>1){
+      const e=document.createElement('span');
+      e.textContent='…';
+      e.style.cssText='color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
+      btns.appendChild(e);
+    }
+  }
+
+  for(let p=pStart;p<=pEnd;p++){
+    const b=document.createElement('button');
+    b.className='pg-btn'+(p===PG.page?' active':'');
+    b.textContent=p+1;
+    b.onclick=()=>goPage(p);
+    btns.appendChild(b);
+  }
+
+  if(pEnd<pages-1){
+    if(pEnd<pages-2){
+      const e=document.createElement('span');
+      e.textContent='…';
+      e.style.cssText='color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
+      btns.appendChild(e);
+    }
+    const b=document.createElement('button');
+    b.className='pg-btn';
+    b.textContent=pages;
+    b.onclick=()=>goPage(pages-1);
+    btns.appendChild(b);
+  }
+
+  const next=document.createElement('button');
+  next.className='pg-btn pg-nav';
+  next.textContent='Siguiente ›';
+  next.disabled=PG.page>=pages-1;
+  next.onclick=()=>goPage(PG.page+1);
+  btns.appendChild(next);
+}
+
+function trunc(s,n){return s&&s.length>n?s.slice(0,n)+'…':s}
+
+// ═══════════════════════════════════════════════════════
+//  REDRAW
+// ═══════════════════════════════════════════════════════
+function redraw(){updKPIs();drawB();drawL();drawT();drawH();drawWC();drawTB()}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+document.getElementById('fecha-actual').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+window.addEventListener('load',()=>{initHeatmapScroller();redraw()});
+window.addEventListener('resize',()=>{clearTimeout(window._rt);window._rt=setTimeout(redraw,160)});
+</script>
+</body>
+</html>
