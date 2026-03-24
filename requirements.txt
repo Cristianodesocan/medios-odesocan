@@ -13,7 +13,7 @@ newspaper3k==0.2.8          # Extracción de texto de artículos (opcional)
 psycopg2-binary==2.9.9      # Conexión a Supabase (PostgreSQL)
 
 # ── NLP (para el siguiente módulo) ───────────────────────────────────────────
-spacy==3.7.4                # NLP en español
+spacy==3.8.4                # NLP en español
 # Descargar modelo: python -m spacy download es_core_news_md
 scikit-learn==1.5.0         # TF-IDF vectorizer
 nltk==3.8.1                 # Stopwords extra
