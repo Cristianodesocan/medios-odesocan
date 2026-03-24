@@ -1,0 +1,248 @@
+/* ── Reset / Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background: var(--bg-page, #f7f6f2);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* ── Topbar ───────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  height: 52px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  gap: 1rem;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #059669;
+  flex-shrink: 0;
+}
+
+.topbar-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #111827;
+}
+
+.topbar-title {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.topbar-sep {
+  width: 1px;
+  height: 18px;
+  background: #e5e7eb;
+}
+
+.topbar-title {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* ── Section labels ───────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  margin: 2rem 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  white-space: nowrap;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.panel-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease;
+  height: 100%;
+}
+
+.panel-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.kpi-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  overflow: hidden;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.09);
+}
+
+/* ── Filter bar ───────────────────────────────────────────────────────────── */
+.filter-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Status banner ────────────────────────────────────────────────────────── */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f0fdf9;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.82rem;
+  color: #065f46;
+  margin-bottom: 1rem;
+}
+
+/* ── Dropdown refinements ─────────────────────────────────────────────────── */
+.Select-control {
+  border-radius: 8px !important;
+  border-color: #e5e7eb !important;
+  min-height: 36px !important;
+  font-size: 0.875rem !important;
+}
+
+.Select-control:hover { border-color: #d1d5db !important; }
+.is-focused .Select-control { border-color: #059669 !important; box-shadow: 0 0 0 2px rgba(5,150,105,0.12) !important; }
+
+.Select-menu-outer {
+  border-radius: 10px !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1) !important;
+  overflow: hidden;
+}
+
+.Select-option { font-size: 0.875rem !important; }
+.Select-option.is-focused { background-color: #f0fdf9 !important; }
+.Select-option.is-selected { background-color: #059669 !important; }
+
+/* ── Input ────────────────────────────────────────────────────────────────── */
+.form-control {
+  border-radius: 8px !important;
+  border-color: #e5e7eb !important;
+  font-size: 0.875rem !important;
+  height: 36px !important;
+}
+
+.form-control:focus {
+  border-color: #059669 !important;
+  box-shadow: 0 0 0 2px rgba(5,150,105,0.12) !important;
+}
+
+/* ── Button ───────────────────────────────────────────────────────────────── */
+.btn-refresh {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  border-radius: 999px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  padding: 0.42rem 1.2rem !important;
+  transition: background 0.15s ease, transform 0.1s ease !important;
+}
+
+.btn-refresh:hover {
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+  transform: translateY(-1px) !important;
+}
+
+.btn-refresh:active { transform: translateY(0) !important; }
+
+/* ── Loading spinner ──────────────────────────────────────────────────────── */
+._dash-loading-callback { cursor: wait; }
+.dash-spinner > svg { stroke: #059669 !important; }
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+.dash-table-container .row:hover td { background-color: #f0fdf9 !important; }
+
+/* ── DatePickerRange ──────────────────────────────────────────────────────── */
+.DateInput_input {
+  font-size: 0.85rem !important;
+  border-radius: 8px !important;
+}
+
+.DateRangePickerInput {
+  border-radius: 8px !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+/* ── Card body padding override ───────────────────────────────────────────── */
+.card-body { padding: 0 !important; }
+
+/* ── Card title typography ────────────────────────────────────────────────── */
+.card-title-main {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.card-title-badge {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #9ca3af;
+  background: #f3f4f6;
+  border-radius: 99px;
+  padding: 0.15rem 0.55rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  margin-bottom: 0.85rem;
+}
+
+/* ── Plot title override ──────────────────────────────────────────────────── */
+.gtitle {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}

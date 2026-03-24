@@ -1,0 +1,75 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Scraping diario de medios canarios — ODESOCAN
+# Ejecuta el pipeline: scraping → sync Supabase → genera dashboard → commit
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Scraping medios canarios
+
+on:
+  schedule:
+    # Cada día a las 10:00 UTC (11:00 hora Canarias)
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    # Permite ejecución manual desde la UI de GitHub Actions
+    inputs:
+      medio:
+        description: "Medio específico a scrapear (vacío = todos)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # necesario para push del dashboard actualizado
+
+jobs:
+  scraping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
+      SUPABASE_PORT: ${{ secrets.SUPABASE_PORT }}
+      SUPABASE_DBNAME: ${{ secrets.SUPABASE_DBNAME }}
+      SUPABASE_USER: ${{ secrets.SUPABASE_USER }}
+      SUPABASE_PASSWORD: ${{ secrets.SUPABASE_PASSWORD }}
+      SUPABASE_SSLMODE: ${{ secrets.SUPABASE_SSLMODE }}
+      SUPABASE_SCHEMA: ${{ secrets.SUPABASE_SCHEMA }}
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxml2-dev libxslt1-dev
+
+      - name: Instalar dependencias Python
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-ci.txt
+
+      - name: Instalar Playwright (para canariasahora)
+        run: |
+          pip install playwright==1.44.0
+          playwright install chromium --with-deps
+
+      - name: Descargar modelo spaCy español
+        run: python -m spacy download es_core_news_md
+
+      - name: Ejecutar scraping + sync + dashboard
+        run: python scheduler.py --run-now
+
+      - name: Commit y push del dashboard actualizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dashboard_medios_odesocan.html data/
+          # Solo hacer commit si hay cambios
+          git diff --staged --quiet || git commit -m "🗞️ Actualización automática — $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

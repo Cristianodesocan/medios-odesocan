@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 convert_docx_to_html.py)"
+    ]
+  }
+}

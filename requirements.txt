@@ -1,0 +1,31 @@
+# requirements.txt — Monitor de medios canarios
+# Instalar con: pip install -r requirements.txt
+
+# ── Scraping ──────────────────────────────────────────────────────────────────
+feedparser==6.0.11          # Parseo RSS/Atom robusto
+httpx==0.27.0               # Cliente HTTP moderno con reintentos
+beautifulsoup4==4.12.3      # Parsing HTML
+lxml==5.2.2                 # Parser HTML rápido para BeautifulSoup
+newspaper3k==0.2.8          # Extracción de texto de artículos (opcional)
+
+# ── Base de datos ─────────────────────────────────────────────────────────────
+# sqlite3 viene con Python estándar, no necesita instalación
+psycopg2-binary==2.9.9      # Conexión a Supabase (PostgreSQL)
+
+# ── NLP (para el siguiente módulo) ───────────────────────────────────────────
+spacy==3.7.4                # NLP en español
+# Descargar modelo: python -m spacy download es_core_news_md
+scikit-learn==1.5.0         # TF-IDF vectorizer
+nltk==3.8.1                 # Stopwords extra
+
+# ── Visualización (para el dashboard Dash) ───────────────────────────────────
+dash==2.17.1
+dash-bootstrap-components==1.6.0
+plotly==5.22.0
+wordcloud==1.9.3            # Generación de nubes de palabras
+pandas==2.2.2               # Manipulación de datos
+Pillow==10.3.0              # Requerida por wordcloud
+
+# ── Utilidades ────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1        # Variables de entorno opcionales
+schedule==1.2.2             # Scheduler en Python (alternativa a cron)
