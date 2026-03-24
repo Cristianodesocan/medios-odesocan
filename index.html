@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ODESOCAN · Observatorio de Medios Canarios</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
@@ -136,6 +137,22 @@ h1 {
 }
 .theme-toggle:hover { background: rgba(255,255,255,.22); }
 .theme-toggle .icon { font-size: 1rem; }
+
+/* ── LOADING OVERLAY ───────────────────────────────────── */
+.loading-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  z-index: 10000; flex-direction: column; gap: 1rem;
+  transition: opacity .4s;
+}
+.loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.loading-spinner {
+  width: 48px; height: 48px; border: 4px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--muted); font-size: .9rem; font-family: var(--font-body); }
 
 /* ── FILTERS BAR ────────────────────────────────────────── */
 .filters-bar {
@@ -399,6 +416,12 @@ footer {
 </head>
 <body>
 
+<!-- ═══ LOADING ═══ -->
+<div class="loading-overlay" id="loading">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Cargando noticias desde Supabase...</div>
+</div>
+
 <div id="tooltip"></div>
 
 <!-- ═══ HEADER ═══ -->
@@ -410,9 +433,9 @@ footer {
       <p class="header-sub">Análisis en tiempo real de la agenda informativa de los principales diarios del archipiélago</p>
       <div class="header-meta">
         <div class="meta-badge">📅 <span id="fecha-actual"></span></div>
-        <div class="meta-badge">📰 <span>152</span> noticias</div>
-        <div class="meta-badge">🗞️ <span>10</span> medios</div>
-        <div class="meta-badge">🏷️ <span>13</span> temáticas</div>
+        <div class="meta-badge">📰 <span id="badge-noticias">—</span> noticias</div>
+        <div class="meta-badge">🗞️ <span id="badge-medios">—</span> medios</div>
+        <div class="meta-badge">🏷️ <span id="badge-temas">—</span> temáticas</div>
       </div>
     </div>
     <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
@@ -423,31 +446,14 @@ footer {
 </header>
 
 <!-- ═══ FILTROS ═══ -->
-<div class="filters-bar">
+<div class="filters-bar" id="filters-bar">
   <span class="filters-label">Medio</span>
-  <button class="filter-btn active" data-medio="todos"         onclick="setMedio('todos',this)">Todos</button>
-  <button class="filter-btn"        data-medio="canarias7"     onclick="setMedio('canarias7',this)">Canarias7</button>
-  <button class="filter-btn"        data-medio="diariodeavisos"onclick="setMedio('diariodeavisos',this)">Diario de Avisos</button>
-  <button class="filter-btn"        data-medio="laprovincia"   onclick="setMedio('laprovincia',this)">La Provincia</button>
-  <button class="filter-btn"        data-medio="eldia"         onclick="setMedio('eldia',this)">El Día</button>
-  <button class="filter-btn"        data-medio="laopinion"     onclick="setMedio('laopinion',this)">La Opinión</button>
-  <button class="filter-btn"        data-medio="atlanticohoy"  onclick="setMedio('atlanticohoy',this)">Atlántico Hoy</button>
-  <button class="filter-btn"        data-medio="canariasahora" onclick="setMedio('canariasahora',this)">Canarias Ahora</button>
+  <button class="filter-btn active" data-medio="todos" onclick="setMedio('todos',this)">Todos</button>
+  <!-- Los botones de medios se generan dinámicamente -->
   <div class="filter-sep"></div>
   <span class="filters-label">Tema</span>
   <select id="filtro-tema" class="filter-select" onchange="setTema(this.value)">
     <option value="todos">Todos los temas</option>
-    <option value="politica">Política</option>
-    <option value="medio_ambiente">Medio Ambiente</option>
-    <option value="economia">Economía</option>
-    <option value="sanidad">Sanidad</option>
-    <option value="vivienda">Vivienda</option>
-    <option value="presupuestos">Presupuestos</option>
-    <option value="violencia_genero">Violencia de Género</option>
-    <option value="turismo">Turismo</option>
-    <option value="migracion">Migración</option>
-    <option value="salud_mental">Salud Mental</option>
-    <option value="dependencia_discapacidad">Dependencia y Discapacidad</option>
   </select>
   <button class="reset-btn" onclick="resetFiltros()">✕ Limpiar</button>
 </div>
@@ -499,46 +505,51 @@ footer {
     </div>
     <div class="card">
       <div class="card-header">
-        <div><div class="card-title">Medios × Temáticas</div><div class="card-subtitle">Coocurrencia · clic para filtrar combinación</div></div>
+        <div><div class="card-title">Medio × Tema</div><div class="card-subtitle">Matriz cruzada · clic en celda para filtrar</div></div>
         <div class="card-chip">Heatmap</div>
       </div>
-      <div class="card-body card-body-fill heatmap-scroll" style="padding:1rem 1.2rem" id="hb"><svg id="ch"></svg></div>
+      <div class="card-body card-body-fill" style="padding:0">
+        <div class="heatmap-scroll" id="hb"><svg id="ch"></svg></div>
+      </div>
     </div>
   </div>
 
-  <div class="row-2">
-    <div class="card">
-      <div class="card-header">
-        <div><div class="card-title">Nube de Palabras</div><div class="card-subtitle">Extraída de titulares · clic resalta noticias coincidentes</div></div>
-        <div class="card-chip" id="chip-wc">—</div>
-      </div>
-      <div class="card-body" style="padding:1rem 1.4rem"><svg id="wc" height="420" style="width:100%"></svg></div>
+  <div class="card">
+    <div class="card-header">
+      <div><div class="card-title">Nube de Palabras</div><div class="card-subtitle">Términos más frecuentes en los titulares</div></div>
+      <div class="card-chip" id="chip-wc">—</div>
     </div>
+    <div class="card-body"><svg id="wc"></svg></div>
+  </div>
 
-    <!-- TABLE CARD -->
-    <div class="card">
-      <div class="card-header">
-        <div><div class="card-title">Noticias Destacadas</div><div class="card-subtitle">Titular · Medio · Tema · Acceso directo</div></div>
-        <div class="card-chip" id="tc">—</div>
-      </div>
-      <div class="news-table-wrap">
-        <table>
-          <thead><tr><th>Titular</th><th>Medio</th><th>Tema(s)</th><th>Enlace</th></tr></thead>
-          <tbody id="tb"></tbody>
-        </table>
-      </div>
-      <div class="pagination" id="pg-bar">
-        <span class="pagination-info" id="pg-info"></span>
-        <div class="pagination-btns" id="pg-btns"></div>
-      </div>
+  <div class="card">
+    <div class="card-header">
+      <div><div class="card-title">Tabla de Noticias</div><div class="card-subtitle">Detalle con paginación</div></div>
+      <div class="card-chip" id="tc">—</div>
+    </div>
+    <div class="news-table-wrap">
+      <table>
+        <thead><tr><th>Titular</th><th>Medio</th><th>Temas</th><th>Enlace</th></tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pg-bar" style="display:none">
+      <span class="pagination-info" id="pg-info"></span>
+      <div class="pagination-btns" id="pg-btns"></div>
     </div>
   </div>
 
 </div>
 
-<footer>ODESOCAN · Observatorio para el Desarrollo Económico y Social de Canarias · <strong>bd_odesocan</strong> · schema: <em>medios.noticias</em> · 152 registros · 24.03.2026</footer>
+<footer>ODESOCAN · Observatorio de Desigualdad Social de Canarias — Datos actualizados dinámicamente desde Supabase</footer>
 
 <script>
+// ═══════════════════════════════════════════════════════
+//  SUPABASE CONFIG
+// ═══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://kdpsjutsgvghdtzoskkg.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkcHNqdXRzZ3ZnaGR0em9za2tnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxOTE3MzEsImV4cCI6MjA4MDc2NzczMX0.1W2H42tPmOSvVWPd65jS3m13k_M3gH_X1ifysTKppPo';
+
 // ═══════════════════════════════════════════════════════
 //  THEME TOGGLE
 // ═══════════════════════════════════════════════════════
@@ -548,441 +559,598 @@ function toggleTheme() {
   html.dataset.theme = isDark ? 'light' : 'dark';
   document.getElementById('theme-icon').textContent  = isDark ? '🌙' : '☀️';
   document.getElementById('theme-label').textContent = isDark ? 'Tema oscuro' : 'Tema claro';
-  // Redraw charts to pick up new CSS variable colors
   redraw();
 }
 
 // ═══════════════════════════════════════════════════════
-//  DATOS
+//  PALETA DE COLORES
 // ═══════════════════════════════════════════════════════
-const MM=[{"medio": "eldia", "total": 20, "color": "#2e7d32"}, {"medio": "canariasahora", "total": 20, "color": "#c62828"}, {"medio": "eltime", "total": 20, "color": "#d4a017"}, {"medio": "laprovincia", "total": 19, "color": "#d63b2f"}, {"medio": "canarias7", "total": 14, "color": "#1a5fa8"}, {"medio": "atlanticohoy", "total": 14, "color": "#00695c"}, {"medio": "elhierrohoy", "total": 14, "color": "#5d4037"}, {"medio": "diariodeavisos", "total": 12, "color": "#6a1b9a"}, {"medio": "lancelotdigital", "total": 10, "color": "#bf360c"}, {"medio": "laopinion", "total": 9, "color": "#e65100"}];
-const CM=Object.fromEntries(MM.map(d=>[d.medio,d.color]));
-const TM=[{"tema": "economia", "n": 86, "color": "#2e7d32"}, {"tema": "medio_ambiente", "n": 56, "color": "#1b5e20"}, {"tema": "politica", "n": 34, "color": "#4a148c"}, {"tema": "turismo", "n": 9, "color": "#0277bd"}, {"tema": "migracion", "n": 5, "color": "#1565c0"}, {"tema": "presupuestos", "n": 5, "color": "#e65100"}, {"tema": "vivienda", "n": 4, "color": "#f57f17"}, {"tema": "sanidad", "n": 4, "color": "#008591"}, {"tema": "justicia", "n": 3, "color": "#37474f"}, {"tema": "cuidados", "n": 2, "color": "#ef6c00"}, {"tema": "violencia_genero", "n": 1, "color": "#880e4f"}, {"tema": "diversidad", "n": 1, "color": "#7b1fa2"}, {"tema": "igualdad", "n": 1, "color": "#ad1457"}, {"tema": "salud_mental", "n": 0, "color": "#d28aff"}, {"tema": "dependencia_discapacidad", "n": 0, "color": "#0ea5e9"}].sort((a,b)=>b.n-a.n);
-const CT=Object.fromEntries(TM.map(d=>[d.tema,d.color]));
-const HM=[{"medio": "elhierrohoy", "tema": "economia", "n": 6}, {"medio": "elhierrohoy", "tema": "medio_ambiente", "n": 7}, {"medio": "elhierrohoy", "tema": "politica", "n": 1}, {"medio": "elhierrohoy", "tema": "cuidados", "n": 2}, {"medio": "elhierrohoy", "tema": "violencia_genero", "n": 1}, {"medio": "lancelotdigital", "tema": "presupuestos", "n": 1}, {"medio": "lancelotdigital", "tema": "economia", "n": 5}, {"medio": "lancelotdigital", "tema": "turismo", "n": 1}, {"medio": "lancelotdigital", "tema": "sanidad", "n": 2}, {"medio": "lancelotdigital", "tema": "politica", "n": 2}, {"medio": "lancelotdigital", "tema": "medio_ambiente", "n": 1}, {"medio": "eltime", "tema": "medio_ambiente", "n": 1}, {"medio": "eltime", "tema": "turismo", "n": 2}, {"medio": "eltime", "tema": "economia", "n": 10}, {"medio": "eltime", "tema": "politica", "n": 8}, {"medio": "atlanticohoy", "tema": "medio_ambiente", "n": 8}, {"medio": "atlanticohoy", "tema": "sanidad", "n": 1}, {"medio": "atlanticohoy", "tema": "economia", "n": 7}, {"medio": "atlanticohoy", "tema": "migracion", "n": 1}, {"medio": "atlanticohoy", "tema": "politica", "n": 2}, {"medio": "atlanticohoy", "tema": "turismo", "n": 1}, {"medio": "canariasahora", "tema": "igualdad", "n": 1}, {"medio": "canariasahora", "tema": "turismo", "n": 2}, {"medio": "canariasahora", "tema": "vivienda", "n": 2}, {"medio": "canariasahora", "tema": "medio_ambiente", "n": 10}, {"medio": "canariasahora", "tema": "politica", "n": 8}, {"medio": "canariasahora", "tema": "economia", "n": 8}, {"medio": "canariasahora", "tema": "presupuestos", "n": 1}, {"medio": "laopinion", "tema": "sanidad", "n": 1}, {"medio": "laopinion", "tema": "vivienda", "n": 1}, {"medio": "laopinion", "tema": "turismo", "n": 1}, {"medio": "laopinion", "tema": "economia", "n": 4}, {"medio": "laopinion", "tema": "politica", "n": 3}, {"medio": "laopinion", "tema": "diversidad", "n": 1}, {"medio": "laopinion", "tema": "justicia", "n": 1}, {"medio": "diariodeavisos", "tema": "economia", "n": 10}, {"medio": "diariodeavisos", "tema": "medio_ambiente", "n": 10}, {"medio": "diariodeavisos", "tema": "politica", "n": 2}, {"medio": "eldia", "tema": "economia", "n": 14}, {"medio": "eldia", "tema": "medio_ambiente", "n": 7}, {"medio": "eldia", "tema": "justicia", "n": 1}, {"medio": "eldia", "tema": "migracion", "n": 1}, {"medio": "eldia", "tema": "turismo", "n": 1}, {"medio": "eldia", "tema": "politica", "n": 1}, {"medio": "eldia", "tema": "presupuestos", "n": 1}, {"medio": "laprovincia", "tema": "vivienda", "n": 1}, {"medio": "laprovincia", "tema": "politica", "n": 3}, {"medio": "laprovincia", "tema": "economia", "n": 10}, {"medio": "laprovincia", "tema": "medio_ambiente", "n": 9}, {"medio": "laprovincia", "tema": "turismo", "n": 1}, {"medio": "laprovincia", "tema": "justicia", "n": 1}, {"medio": "laprovincia", "tema": "migracion", "n": 2}, {"medio": "laprovincia", "tema": "presupuestos", "n": 1}, {"medio": "canarias7", "tema": "economia", "n": 12}, {"medio": "canarias7", "tema": "politica", "n": 4}, {"medio": "canarias7", "tema": "medio_ambiente", "n": 3}, {"medio": "canarias7", "tema": "presupuestos", "n": 1}, {"medio": "canarias7", "tema": "migracion", "n": 1}];
-const TD=[{"medio": "atlanticohoy", "hora": "2026-03-24T15:00", "n": 14}, {"medio": "canarias7", "hora": "2026-03-24T15:00", "n": 14}, {"medio": "canariasahora", "hora": "2026-03-24T15:00", "n": 20}, {"medio": "diariodeavisos", "hora": "2026-03-24T15:00", "n": 12}, {"medio": "eldia", "hora": "2026-03-24T15:00", "n": 20}, {"medio": "elhierrohoy", "hora": "2026-03-24T15:00", "n": 14}, {"medio": "eltime", "hora": "2026-03-24T15:00", "n": 20}, {"medio": "lancelotdigital", "hora": "2026-03-24T15:00", "n": 10}, {"medio": "laopinion", "hora": "2026-03-24T15:00", "n": 9}, {"medio": "laprovincia", "hora": "2026-03-24T15:00", "n": 19}];
-const NW=[{"titulo": "Un vuelo Tenerife Norte-El Hierro regresa a origen por las condiciones de la borrasca Therese", "medio": "elhierrohoy", "temas": ["economia", "medio_ambiente"], "url": "https://elhierrohoy.es/vuelo-tenerife-el-hierro-regresa-condiciones-borrasca-therese/"}, {"titulo": "Registrado un terremoto de magnitud 2,4 este jueves en El Hierro", "medio": "elhierrohoy", "temas": ["medio_ambiente"], "url": "https://elhierrohoy.es/terremoto-magnitud-2-4-jueves-el-hierro/"}, {"titulo": "La borrasca Therese deja más de 100 litros por metro cuadrado en El Hierro y múltiples incidencias en la isla", "medio": "elhierrohoy", "temas": ["economia", "medio_ambiente"], "url": "https://elhierrohoy.es/borrasca-therese-100-litros-metro-cuadradoel-hierro-incidencias/"}, {"titulo": "La Frontera mantiene la alerta por lluvias, viento y fenómenos costeros y cierra el Mirador de Puntagrande", "medio": "elhierrohoy", "temas": ["medio_ambiente"], "url": "https://elhierrohoy.es/frontera-alerta-lluvias-viento-fenomenos-costeros-cierra-mirador-puntagrande/"}, {"titulo": "Fallece Inocencio Hernández González, ex presidente del Cabildo de El Hierro", "medio": "elhierrohoy", "temas": ["politica"], "url": "https://elhierrohoy.es/fallece-inocencio-hernandez-presidente-cabildo-el-hierro/"}, {"titulo": "Valverde acoge la exposición “María Skłodowska-Curie. Una polaca en París”", "medio": "elhierrohoy", "temas": ["economia"], "url": "https://elhierrohoy.es/valverde-exposicion-maria-curie/"}, {"titulo": "El Pleno de Valverde rechaza la propuesta sobre la Escuela Infantil y el alcalde asegura que ya se están aplicando las medidas", "medio": "elhierrohoy", "temas": ["cuidados"], "url": "https://elhierrohoy.es/valverde-rechaza-propuesta-escuela-infantil/"}, {"titulo": "Canarias refuerza su flota de helicópteros medicalizados, con cobertura para todas las islas", "medio": "elhierrohoy", "temas": ["economia"], "url": "https://elhierrohoy.es/canariasflota-helicopteros-medicalizados/"}, {"titulo": "El Hierro registra un nuevo terremoto de magnitud 2,3 al sureste de Valverde", "medio": "elhierrohoy", "temas": ["medio_ambiente"], "url": "https://elhierrohoy.es/el-hierro-terremoto-sureste-valverde/"}, {"titulo": "El PSOE acusa al grupo de gobierno de Valverde de continuar con la cesión de la Escuela Infantil “sin garantías ni consenso”", "medio": "elhierrohoy", "temas": ["cuidados"], "url": "https://elhierrohoy.es/psoe-valverde-cesion-escuela-infantil/"}, {"titulo": "El Cabildo de El Hierro invierte cerca de 38.000 euros en la mejora de pistas rurales en El Pinar", "medio": "elhierrohoy", "temas": ["economia"], "url": "https://elhierrohoy.es/cabildo-el-hierro-invierte-mejora-pistas-rurales-pinar/"}, {"titulo": "El Hierro registra varios terremotos en la madrugada y la mañana de este martes, uno de magnitud 2,9", "medio": "elhierrohoy", "temas": ["medio_ambiente"], "url": "https://elhierrohoy.es/el-hierro-terremotos-madrugada-magnitud-29/"}, {"titulo": "El Hierro solicita mayor dotación económica al Gobierno para avanzar en la atención a las víctimas de violencia machista", "medio": "elhierrohoy", "temas": ["violencia_genero"], "url": "https://elhierrohoy.es/el-hierro-dotacion-economica-victimas-violencia-machista/"}, {"titulo": "El Hierro se mantiene en aviso por lluvias ante la persistencia de la borrasca Therese en Canarias", "medio": "elhierrohoy", "temas": ["medio_ambiente", "economia"], "url": "https://elhierrohoy.es/el-hierro-aviso-lluvias-borrasca-therese-canarias/"}, {"titulo": "El PSOE presenta una enmienda a la totalidad a los presupuestos de Arrecife", "medio": "lancelotdigital", "temas": ["presupuestos"], "url": "https://www.lancelotdigital.com/lanzarote/el-psoe-presenta-una-enmienda-a-la-totalidad-a-los-presupuestos-de-arrecife"}, {"titulo": "HiperDino, empresa de referencia en innovación en Canarias", "medio": "lancelotdigital", "temas": ["economia"], "url": "https://www.lancelotdigital.com/noticias-de-empresa/hiperdino-empresa-de-referencia-en-innovacion-en-innovacion-en-canarias"}, {"titulo": "CICAR refuerza su presencia en B-Travel 2026, el Salón del Turismo de Barcelona", "medio": "lancelotdigital", "temas": ["turismo", "economia"], "url": "https://www.lancelotdigital.com/noticias-de-empresa/cicar-refuerza-su-presencia-en-b-travel-2026-el-salon-del-turismo-de-barcelona"}, {"titulo": "Hospitales San Roque, referentes en cirugía vascular en Lanzarote", "medio": "lancelotdigital", "temas": ["economia", "sanidad"], "url": "https://www.lancelotdigital.com/noticias-de-empresa/hospitales-san-roque-referentes-en-cirugia-vascular-en-lanzarote"}, {"titulo": "\"Si se aplica el Interés Regional a la tubería de Haría la obra podría tardar dos años más\"", "medio": "lancelotdigital", "temas": ["economia"], "url": "https://www.lancelotdigital.com/lanzarote/si-se-aplica-el-interes-regional-a-la-tuberia-de-haria-la-obra-podria-tardar-dos-anos-mas"}, {"titulo": "Canarias creará 11.700 empleos durante la campaña de Semana Santa", "medio": "lancelotdigital", "temas": ["economia"], "url": "https://www.lancelotdigital.com/canarias/canarias-creara-11-700-empleos-durante-la-campana-de-semana-santa"}, {"titulo": "El PSOE canario pide a Clavijo un decreto propio para las Islas", "medio": "lancelotdigital", "temas": ["politica"], "url": "https://www.lancelotdigital.com/canarias/el-psoe-canario-pide-a-clavijo-un-decreto-propio-para-las-islas"}, {"titulo": "Las presas de Gran Canaria, desbordadas por las lluvias", "medio": "lancelotdigital", "temas": ["medio_ambiente"], "url": "https://www.lancelotdigital.com/canarias/gran-canaria-eleva-la-emergencia-a-nivel-2-por-la-borrasca-therese"}, {"titulo": "Las medidas anticrisis de Sánchez se olvidan de Canarias", "medio": "lancelotdigital", "temas": ["politica"], "url": "https://www.lancelotdigital.com/canarias/las-medidas-anticrisis-de-sanchez-se-olvidan-de-canarias"}, {"titulo": "Subsanados los vertidos de El Reducto y a la espera de Salud Pública", "medio": "lancelotdigital", "temas": ["sanidad"], "url": "https://www.lancelotdigital.com/lanzarote/subsanados-los-vertidos-de-el-reducto-y-a-la-espera-de-salud-publica"}, {"titulo": "Los Llanos mantiene activado el PEMU ante la previsión de lluvias intensas y viento", "medio": "eltime", "temas": ["medio_ambiente"], "url": "https://eltime.es/isla-bonita/178-municipios/57496-el-ayuntamiento-de-los-llanos-de-aridane-mantiene-activado-el-pemu-ante-la-prevision-de-lluvias-intensas-y-viento.html"}, {"titulo": "Turismo", "medio": "eltime", "temas": ["turismo"], "url": "https://eltime.es/isla-bonita/135-turismo.html"}, {"titulo": "Unos 9.000 palmeros recurrieron a la economía sumergida en el último año", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/57314-unos-9-000-palmeros-recurrieron-a-la-economia-sumergida-en-el-ultimo-ano.html"}, {"titulo": "Transvulcania adidas incorpora a Nutrinovex como patrocinador oficial de nutrición deportiva", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/131-empresas/57470-transvulcania-adidas-incorpora-a-nutrinovex-como-patrocinador-oficial-de-nutricion-deportiva.html"}, {"titulo": "Villa de Mazo organiza una formación en ciberseguridad y derechos digitales", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/130-isla-inteligente/57473-villa-de-mazo-organiza-una-formacion-en-ciberseguridad-y-derechos-digitales.html"}, {"titulo": "El futuro Centro Interuniversitario de La Palma \"generará oportunidades para residentes y estudiantes llegados a la Isla\"", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/133-empleo/57486-el-futuro-centro-interuniversitario-de-la-palma-generara-oportunidades-para-residentes-y-estudiantes-llegados-a-la-isla.html"}, {"titulo": "La Palma estará en la final nacional del GourmetQuesos 2026 con el Queso Las Cuevas", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/132-hecho-en-la-palma/57495-la-palma-estara-en-la-final-nacional-del-gourmetquesos-2026-con-el-queso-las-cuevas.html"}, {"titulo": "Hecho aquí", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/132-hecho-en-la-palma.html"}, {"titulo": "Empleo y Formación", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/133-empleo.html"}, {"titulo": "Empresas", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/131-empresas.html"}, {"titulo": "Innovación y Tecnología", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/130-isla-inteligente.html"}, {"titulo": "Agro Palmero", "medio": "eltime", "temas": ["economia"], "url": "https://eltime.es/economia/129-campo-palmero.html"}, {"titulo": "PSOE de Los Llanos de Aridane defiende una universidad pública para el Valle frente a la apuesta de CC por la privada", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/57469-psoe-de-los-llanos-de-aridane-defiende-una-universidad-publica-para-el-valle-frente-a-la-apuesta-de-cc-por-la-privada.html"}, {"titulo": "El PP de Breña Alta propone la creación de un Espacio Joven municipal para ofrecer alternativas de ocio saludable", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/57478-el-pp-de-brena-alta-propone-la-creacion-de-un-espacio-joven-municipal-para-ofrecer-alternativas-de-ocio-saludable.html"}, {"titulo": "Nayra Castro: \"El grupo de gobierno (CC) sigue sin dar solución a los colapsos diarios de tráfico en la zona del colegio\"", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/57482-nayra-castro-el-grupo-de-gobierno-cc-sigue-sin-dar-solucion-a-los-colapsos-diarios-de-trafico-en-la-zona-del-colegio.html"}, {"titulo": "El Grupo Popular critica la \"escasez\" de información pública sobre el catálogo de ecoturismo presentado por el Cabildo de La Palma", "medio": "eltime", "temas": ["turismo", "politica"], "url": "https://eltime.es/politica/57487-el-grupo-popular-critica-la-escasez-de-informacion-publica-sobre-el-catalogo-de-ecoturismo-presentado-por-el-cabildo-de-la-palma.html"}, {"titulo": "El PSOE de Breña Baja lamenta \"el rechazo del PP a crear zonas de sombra y plantar árboles en el municipio\"", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/57490-el-psoe-de-brena-baja-lamenta-el-rechazo-del-pp-a-crear-zonas-de-sombra-y-plantar-arboles-en-el-municipio.html"}, {"titulo": "Instituciones", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/185-instituciones.html"}, {"titulo": "Partidos", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/184-partidos.html"}, {"titulo": "Canarias", "medio": "eltime", "temas": ["politica"], "url": "https://eltime.es/politica/183-canarias.html"}, {"titulo": "Miedo y abandono bajo la borrasca en Granadilla: Yaiza se vio sola en su chabola  y sin auxilio", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/tenerife/miedo-abandono-bajo-borrasca-en-granadilla-yaiza-se-vio-sola-en-su-chabola-sin-auxilio_1559168_102.html"}, {"titulo": "Sanidad da por cerrado el brote de sarampión iniciado en octubre en La Palma", "medio": "atlanticohoy", "temas": ["sanidad"], "url": "https://www.atlanticohoy.com/islas-verdes/sanidad-da-por-cerrado-brote-sarampion-iniciado-en-octubre-en-palma_1559218_102.html"}, {"titulo": "Aumentan los casos de tuberculosis en Canarias y crece el riesgo en menores de 15 años", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/sociedad/aumentan-casos-tuberculosis-en-canarias-crece-riesgo-en-menores-15-anos_1559164_102.html"}, {"titulo": "CCOO denuncia que los despidos de Glovo amenazan la estabilidad laboral de la plantilla en Canarias", "medio": "atlanticohoy", "temas": ["migracion"], "url": "https://www.atlanticohoy.com/empresas/ccoo-denuncia-despidos-glovo-amenazan-estabilidad-laboral-plantilla-en-canarias_1559158_102.html"}, {"titulo": "Canarias se asoma a un escenario de incumplimiento de la regla de gasto hasta 2028", "medio": "atlanticohoy", "temas": ["economia"], "url": "https://www.atlanticohoy.com/economia/canarias-se-asoma-escenario-incumplimiento-regla-gasto-hasta-2028_1559171_102.html"}, {"titulo": "Domínguez tilda de “decreto godo” las ayudas del Estado por la guerra de Irán", "medio": "atlanticohoy", "temas": ["politica"], "url": "https://www.atlanticohoy.com/politica/dominguez-tilda-decreto-godo-ayudas-estado-por-guerra-iran_1559193_102.html"}, {"titulo": "La borrasca 'Therese' obliga a suspender el pleno del Parlamento de Canarias", "medio": "atlanticohoy", "temas": ["politica", "economia", "medio_ambiente"], "url": "https://www.atlanticohoy.com/politica/borrasca-therese-obliga-suspender-pleno-parlamento-canarias_1559207_102.html"}, {"titulo": "La Laguna cierra todos sus espacios públicos y suspende actos por la borrasca 'Therese'", "medio": "atlanticohoy", "temas": ["economia", "medio_ambiente"], "url": "https://www.atlanticohoy.com/laguna/laguna-cierra-todos-sus-espacios-publicos-suspende-actos-por-borrasca-therese_1559194_102.html"}, {"titulo": "Siete personas aisladas en Taganana y cierre de instalaciones en Santa Cruz por las lluvias", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/santa-cruz/siete-personas-aisladas-en-taganana-cierre-instalaciones-en-santa-cruz-por-lluvias_1559187_102.html"}, {"titulo": "Rescatan a personas sin hogar en el barranco de Santos por las fuertes lluvias en Santa Cruz", "medio": "atlanticohoy", "temas": ["economia", "medio_ambiente"], "url": "https://www.atlanticohoy.com/santa-cruz/rescatan-personas-sin-hogar-en-barranco-santos-por-fuertes-lluvias-en-santa-cruz_1559200_102.html"}, {"titulo": "Santa Cruz de Tenerife activa la alerta máxima y suspende actividades por la borrasca", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/santa-cruz/santa-cruz-tenerife-activa-alerta-maxima-suspende-actividades-por-borrasca_1559212_102.html"}, {"titulo": "Alerta máxima en Tenerife: suspenden clases y restringen actividades por el giro de la borrasca", "medio": "atlanticohoy", "temas": ["medio_ambiente"], "url": "https://www.atlanticohoy.com/tenerife/alerta-maxima-tenerife-estas-son-zonas-borrasca-therese-critico_1559213_102.html"}, {"titulo": "Suspendidas las clases presenciales en Gran Canaria, Tenerife y La Palma por la borrasca 'Therese'", "medio": "atlanticohoy", "temas": ["economia", "medio_ambiente"], "url": "https://www.atlanticohoy.com/sociedad/suspendidas-clases-presenciales-en-tenerife-palma-por-borrasca-therese_1559202_102.html"}, {"titulo": "El hotel que inspiró a Agatha Christie", "medio": "atlanticohoy", "temas": ["turismo", "economia"], "url": "https://www.atlanticohoy.com/economia/hotel-agatha-christie-canarias-jardin-frances-vistas-atlantico_1558814_102.html"}, {"titulo": "El ESPAL cumple 35 años con un programa “contra la injusticia social” y con la mirada en Palestina", "medio": "canariasahora", "temas": ["igualdad"], "url": "https://www.eldiario.es/canariasahora/sociedad/espal-cumple-35-anos-programa-injusticia-social-mirada-palestina_1_13091968.html"}, {"titulo": "Las pernoctaciones hoteleras en Canarias crecen un 0,1% en febrero hasta sumar 5,9 millones de operaciones", "medio": "canariasahora", "temas": ["turismo"], "url": "https://www.eldiario.es/canariasahora/turismo/pernoctaciones-hoteleras-canarias-crecen-0-1-febrero-sumar-5-9-millones-operaciones_1_13089624.html"}, {"titulo": "Doris Borrego, reelegida por unanimidad presidenta de la Asociación Canaria del Alquiler Vacacional", "medio": "canariasahora", "temas": ["vivienda", "turismo"], "url": "https://www.eldiario.es/canariasahora/turismo/doris-borrego-reelegida-unanimidad-presidenta-asociacion-canaria-alquiler-vacacional_1_13092841.html"}, {"titulo": "Ecologistas en Acción rechaza la implantación de grandes plantas de renovables en Lanzarote sin un debate público", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/ciencia_y_medio_ambiente/ecologistas-accion-rechaza-implantacion-grandes-plantas-renovables-lanzarote-debate-publico_1_13089610.html"}, {"titulo": "El Gobierno regional autoriza los requisitos para la jubilación parcial de su personal laboral", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/politica/canarias-autoriza-requisitos-jubilacion-parcial-personal-laboral_1_13090875.html"}, {"titulo": "Cinco años después, las Islas siguen sin recuperar el PIB per cápita que tenía antes de la pandemia", "medio": "canariasahora", "temas": ["economia"], "url": "https://www.eldiario.es/canariasahora/economia/cinco-anos-despues-canarias-sigue-recuperar-pib-per-capita-tenia-pandemia_1_13087072.html"}, {"titulo": "Desde el IGIC al IRPF: el PSOE de Canarias presenta un paquete de medidas como “escudo social” ante la guerra en Irán", "medio": "canariasahora", "temas": ["politica", "economia", "presupuestos"], "url": "https://www.eldiario.es/canariasahora/politica/igic-irpf-psoe-canarias-escudo-social-guerra-iran_1_13090140.html"}, {"titulo": "Patronal y sindicatos respaldan que Canarias pueda tener medidas específicas por la guerra de Irán", "medio": "canariasahora", "temas": ["politica", "economia"], "url": "https://www.eldiario.es/canariasahora/politica/patronal-sindicatos-respaldan-canarias-pueda-medidas-especificas-guerra_1_13092070.html"}, {"titulo": "El vicepresidente de Canarias (PP) tilda de “decreto godo” el paquete de ayudas estatales por la guerra de Irán", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/politica/vicepresidente-canarias-pp-tilda-decreto-godo-paquete-ayudas-estatales-guerra-iran_1_13093625.html"}, {"titulo": "Sigue el pleno del Parlamento de Canarias", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/parlamento-canario/directo-sigue-pleno-parlamento-canarias_1_13093417.html"}, {"titulo": "Todos los partidos salvo Vox acuerdan que las camas elevables sean obligatorias en Canarias para aliviar a las camareras de piso", "medio": "canariasahora", "temas": ["politica"], "url": "https://www.eldiario.es/canariasahora/politica/partidos-excepto-vox-acuerdan-camas-elevables-sean-obligatorias-canarias-aliviar-camareras-piso-turismo_1_13093707.html"}, {"titulo": "La Asociación de Periodistas de Tenerife censura la entrada de Bolorino a la reunión de emergencias por la borrasca", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tenerifeahora/sociedad/asociacion-periodistas-tenerife-censura-entrada-bolorino-reunion-emergencias-borrasca_1_13090318.html"}, {"titulo": "La entrada de Bolorino a la reunión de emergencias por la borrasca fue autorizada por el director insular de Seguridad del Cabildo de Tenerife", "medio": "canariasahora", "temas": ["politica", "medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tenerifeahora/cabildo/entrada-bolorino-reunion-emergencias-borrasca-autorizada-director-insular-seguridad-cabildo-tenerife_1_13090413.html"}, {"titulo": "Aemet actualiza los avisos amarillos y naranjas y suma riesgo por tormentas y viento en varias islas", "medio": "canariasahora", "temas": ["medio_ambiente", "economia"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/aviso-amarillo-canarias-lunes-aemet-borrasca-therese-alerta-ultima-hora_1_13089132.html"}, {"titulo": "Grave imprudencia en Gran Canaria: dos personas ignoran los riesgos de la borrasca Therese y navegan en kayak por el barranco de La Aldea", "medio": "canariasahora", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/grave-imprudencia-gran-canaria-personas-ignoran-riesgos-borrasca-therese-navegan-kayak-barranco-aldea_1_13093105.html"}, {"titulo": "Una fuerte tromba hace correr el agua por las calles del centro de Santa Cruz de Tenerife", "medio": "canariasahora", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/tromba-lluvia-santa-cruz-tenerife-borrasca-therese-aemet_1_13092601.html"}, {"titulo": "Momento del derrumbe parcial de un popular restaurante en Teror por las fuertes lluvias", "medio": "canariasahora", "temas": ["medio_ambiente", "economia"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/derrumbe-restaurante-teror-fuertes-lluvias-gran-canaria_1_13093809.html"}, {"titulo": "La borrasca Therese inunda calles y viviendas en el sur de Lanzarote y deja importantes destrozos", "medio": "canariasahora", "temas": ["vivienda", "medio_ambiente", "economia"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/borrasca-therese-inunda-calles-viviendas-sur-lanzarote-tiempo_1_13092864.html"}, {"titulo": "Canarias desactiva la emergencia en Gran Canaria, pero la mantiene en alerta junto a Tenerife, La Palma, La Gomera y El Hierro", "medio": "canariasahora", "temas": ["politica", "medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/canarias-emergencia-gran-canaria-alerta-fuertes-lluvias-aemet-hoy_1_13092980.html"}, {"titulo": "Alerta máxima en Tenerife, donde las próximas horas podrían ser “críticas”", "medio": "canariasahora", "temas": ["medio_ambiente"], "url": "https://www.eldiario.es/canariasahora/tiempo-canarias/ultima-hora-borrasca-therese-canarias_6_13076664.html"}, {"titulo": "¿Por qué no paran de aparecer nuevos casos de sarampión en Madrid? “La factura de la falta de vacunación”", "medio": "laopinion", "temas": ["sanidad"], "url": "https://www.laopinion.es/es/madrid/20260324/sarampion-casos-madrid-enfermedad-grave-falta-vacunacion-128347536"}, {"titulo": "La Comunidad de Madrid actualiza la normativa para viviendas de uso turístico: ¿qué cambios habrá?", "medio": "laopinion", "temas": ["vivienda", "turismo"], "url": "https://www.laopinion.es/es/madrid/20260324/comunidad-madrid-refuerza-exigencias-equipamientos-128322280"}, {"titulo": "El presidente de Adif reconoce que no tenían autorización \"por escrito\" para retirar material del accidente de Adamuz, \"pero sí verbal\"", "medio": "laopinion", "temas": ["economia"], "url": "https://www.elperiodico.com/es/economia/20260324/presidente-adif-defiende-colaboracion-plena-128347061"}, {"titulo": "Cuerpo, sobre el reemplazo de Montero: \"Que me incluyan en las quinielas es que se está realizando un buen trabajo\"", "medio": "laopinion", "temas": ["politica"], "url": "https://www.elperiodico.com/es/politica/20260324/cuerpo-reemplazo-montero-quinielas-gobierno-128356786"}, {"titulo": "El PP, sin Vox, fuerza que el Pleno de Madrid inste al Gobierno a reformar la ley trans", "medio": "laopinion", "temas": ["diversidad", "economia"], "url": "https://www.laopinion.es/es/madrid/20260324/pp-vox-fuerza-pleno-madrid-reformar-ley-trans-128355430"}, {"titulo": "Griezmann firma con el Orlando City y se irá del Atlético... al acabar la temporada: \"Queda lo mejor\"", "medio": "laopinion", "temas": ["economia"], "url": "https://www.laopinion.es/es/madrid/20260324/griezmann-firma-orlando-city-ira-atletico-madrid-final-temporada-128359257"}, {"titulo": "La jueza de la dana cita a Mazón como testigo tras rechazar el Tribunal Superior de Justicia su imputación", "medio": "laopinion", "temas": ["justicia"], "url": "https://www.levante-emv.com/comunitat-valenciana/2026/03/24/jueza-dana-cita-mazon-testigo-128356465.html"}, {"titulo": "Junts votará a favor del decreto anticrisis si el PSOE respalda su propuesta sobre autónomos", "medio": "laopinion", "temas": ["economia", "politica"], "url": "https://www.elperiodico.com/es/politica/20260324/junts-votara-favor-decreto-anticrisis-128348593"}, {"titulo": "El Gobierno desoye a Feijóo y fuerza un pleno extraordinario el jueves para votar el decreto de medidas anticrisis", "medio": "laopinion", "temas": ["politica"], "url": "https://www.elperiodico.com/es/politica/20260324/gobierno-desoye-feijoo-pleno-decreto-guerra-jueves-128347910"}, {"titulo": "La Aemet prevé chubascos fuertes y persistentes en Canarias: Tenerife, La Palma y Gran Canaria, las más afectadas", "medio": "diariodeavisos", "temas": ["economia", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/borrasca-therese-canarias-carreteras-cortadas-lluvias/"}, {"titulo": "El “zarpazo” de Therese en Canarias: garajes anegados y desprendimientos en las carreteras", "medio": "diariodeavisos", "temas": ["medio_ambiente", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/zarpazo-borrasca-therese-canarias-garajes-desprendimientos/"}, {"titulo": "Confirmado por Bermúdez: la Unipol volverá a Santa Cruz este año para “reforzar la seguridad en los barrios”", "medio": "diariodeavisos", "temas": ["economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/confirmado-bermudez-vuelta-unipol-calles-santa-cruz/"}, {"titulo": "El IGN localiza tres terremotos en El Hierro, el mayor de magnitud 2,9", "medio": "diariodeavisos", "temas": ["medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/ign-terremotos-en-el-hierro-magnitud/"}, {"titulo": "El Niágara de Tenerife: surge una espectacular cascada en Valle Jiménez tras el paso de Therese", "medio": "diariodeavisos", "temas": ["economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/espectacular-cascada-en-tenerife-valle-jimenez-lluvias/"}, {"titulo": "La borrasca Therese se intensifica y el Gobierno de Canarias actualiza las medidas", "medio": "diariodeavisos", "temas": ["politica", "economia", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/canarias-emergencia-inundaciones-gran-canaria-borrasca-therese/"}, {"titulo": "Caos y lluvia: los vídeos más impactantes del fuerte chaparrón en Santa Cruz y La Laguna", "medio": "diariodeavisos", "temas": ["economia", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/videos-impactantes-chaparron-santa-cruz-la-laguna-hoy/"}, {"titulo": "La borrasca Therese golpea La Laguna: cierre total del municipio tras caer 15 litros en 20 minutos", "medio": "diariodeavisos", "temas": ["medio_ambiente", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/la-laguna-cierre-instalaciones-borrasca-therese/"}, {"titulo": "Rosa Dávila, presidenta del Cabildo de Tenerife: “La lluvia de Gran Canaria viene hacia el área metropolitana de la Isla”", "medio": "diariodeavisos", "temas": ["politica", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/rosa-davila-tenerife-posible-suspension-de-las-clases/"}, {"titulo": "Santa Cruz de Tenerife pasa a estar en alerta máxima por la borrasca Therese", "medio": "diariodeavisos", "temas": ["medio_ambiente", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/santa-cruz-tenerife-alerta-maxima-pemu-borrasca-therese/"}, {"titulo": "Inundaciones en la ULL: las fuertes lluvias dejan cascadas de agua y grandes charcos en la Facultad de Periodismo", "medio": "diariodeavisos", "temas": ["economia", "medio_ambiente"], "url": "https://diariodeavisos.elespanol.com/2026/03/ull-inundacion-facultad-periodismo-borrasca-therese/"}, {"titulo": "Alerta máxima en Tenerife: el giro inesperado de la borrasca ‘Therese’ obliga a tomar medidas drásticas", "medio": "diariodeavisos", "temas": ["medio_ambiente", "economia"], "url": "https://diariodeavisos.elespanol.com/2026/03/alerta-maxima-tenerife-borrasca-therese-evacuacion-teide/"}, {"titulo": "Tenerife arranca el martes con previsión de lluvias fuertes y tormentas", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/24/tenerife-arranca-martes-prevision-lluvias-128319270.html"}, {"titulo": "David Merino, líder canario de la mayor criptoestafa, reaparece tras tres años fugado: \"No me he quedado el dinero de nadie\"", "medio": "eldia", "temas": ["justicia"], "url": "https://www.eldia.es/sucesos/sucesos-en-canarias/2026/03/24/david-merino-lider-canario-mayor-128333854.html"}, {"titulo": "El Mediador de Senegal visita Canarias para fortalecer la cooperación en migración", "medio": "eldia", "temas": ["migracion"], "url": "https://www.eldia.es/canarias/2026/03/24/mediador-senegal-visita-canarias-fortalecer-128352717.html"}, {"titulo": "Los masones de Tenerife celebran la primera ceremonia en su templo tras 90 años", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/tenerife/2026/03/23/masones-tenerife-celebran-primera-ceremonia-128331406.html"}, {"titulo": "Binter propone ampliar su bandeja de destinos en verano", "medio": "eldia", "temas": ["turismo"], "url": "https://www.eldia.es/canarias/2026/03/24/binter-propone-ampliar-bandeja-destinos-128350737.html"}, {"titulo": "El IGN localiza tres terremotos en El Hierro, uno de ellos de magnitud 2,6 al sur de la isla", "medio": "eldia", "temas": ["medio_ambiente"], "url": "https://www.eldia.es/el-hierro/2026/03/24/ign-localiza-tres-terremotos-hierro-128349342.html"}, {"titulo": "Vecinos de Anaga advierten al Cabildo de Tenerife: si no hay medios, cortarán el acceso esta Semana Santa", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/santa-cruz-de-tenerife/2026/03/24/vecinos-anaga-limitar-acceso-semana-santa-tenerife-128326346.html"}, {"titulo": "Escudo anticrisis de Canarias: los grupos piden a Clavijo que apruebe ya un decreto propio", "medio": "eldia", "temas": ["politica"], "url": "https://www.eldia.es/canarias/2026/03/24/escudo-anticrisis-canarias-grupos-piden-128350971.html"}, {"titulo": "Muere la joven que sufrió lesiones graves en una colisión frontal en Tenerife", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/sucesos/sucesos-en-canarias/2026/03/24/muere-joven-sufrio-lesiones-graves-128333725.html"}, {"titulo": "Santa Cruz de Tenerife recuperará la Unipol, los agentes de negro, para \"reforzar la seguridad en los barrios\"", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/santa-cruz-de-tenerife/2026/03/24/santa-cruz-tenerife-recuperara-unipol-128341282.html"}, {"titulo": "Manuel Domínguez da por \"agotada\" la negociación de la financiación autonómica en esta legislatura: \"No es ni malo\"", "medio": "eldia", "temas": ["presupuestos"], "url": "https://www.eldia.es/canarias/2026/03/24/gobierno-canario-da-agotada-negociacion-128350516.html"}, {"titulo": "El primer muelle flotante de Canarias sacará grandes barcos del agua en menos de dos horas para repararlos", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/santa-cruz-de-tenerife/2025/12/16/primer-muelle-flotante-canarias-sacara-puerto-barcos-dique-124861946.html"}, {"titulo": "Canarias llega preparada a la obligatoriedad de la ley contra el desperdicio alimentario", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/economia/2026/03/24/canarias-llega-preparada-obligatoriedad-ley-128358450.html"}, {"titulo": "Canarias da el primer paso para regular el uso agrícola de placas solares", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/economia/2026/03/24/canarias-da-primer-paso-regular-128359171.html"}, {"titulo": "Gran Canaria declara el nivel 2 de emergencia por la borrasca Therese y pide la intervención de la UME", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/canarias/2026/03/24/gran-canaria-declara-nivel-2-128343773.html"}, {"titulo": "Tenerife se blinda ante la borrasca Therese y activa la alerta máxima por riesgo de lluvias torrenciales", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/canarias/2026/03/24/tenerife-blinda-borrasca-therese-activa-128358967.html"}, {"titulo": "La Laguna activará este jueves el CECOPAL como medida de prevención y seguimiento de la borrasca Therese", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/la-laguna/2026/03/19/laguna-activara-jueves-cecopal-medida-128177311.html"}, {"titulo": "Therese descarga 63,6 litros en Roque de los Muchachos y desploma las temperaturas en Izaña", "medio": "eldia", "temas": ["economia"], "url": "https://www.eldia.es/tenerife/2026/03/24/therese-descarga-63-6-litros-roque-muchachos-128341897.html"}, {"titulo": "El Ayuntamiento de La Laguna cierra instalaciones y suspende actos por la borrasca Therese: las medidas, hasta el miércoles a las 12:00", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/24/laguna-registra-litros-cierre-actividades-128351499.html"}, {"titulo": "EN DIRECTO | Suspendidas las clases en Tenerife y La Palma: sigue en directo el paso de la borrasca Therese por Canarias", "medio": "eldia", "temas": ["economia", "medio_ambiente"], "url": "https://www.eldia.es/tenerife/2026/03/24/sigue-directo-evolucion-borrasca-therese-tenerife-canarias-128037628.html"}, {"titulo": "El Senado vota mañana un plan extraordinario para movilizar 44.000 viviendas públicas en Canarias", "medio": "laprovincia", "temas": ["vivienda"], "url": "https://www.laprovincia.es/canarias/2026/03/23/senado-vota-manana-plan-extraordinario-128319950.html"}, {"titulo": "Un informe del Gobierno evita que el alcalde quede sin grupo al irse de Nueva Canarias", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/23/alcalde-echa-mano-administraciones-publicas-128319262.html"}, {"titulo": "Canarias amanece con riesgo de tormentas y lluvias fuertes: estas son las previsiones por islas", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/canarias/2026/03/24/canarias-amanece-riesgo-tormentas-lluvias-128316594.html"}, {"titulo": "Binter propone ampliar su bandeja de destinos en verano", "medio": "laprovincia", "temas": ["turismo"], "url": "https://www.laprovincia.es/canarias/2026/03/24/binter-propone-ampliar-bandeja-destinos-128350738.html"}, {"titulo": "Canarias da el primer paso para regular el uso agrícola de placas solares", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/economia/2026/03/24/canarias-da-primer-paso-regular-128359170.html"}, {"titulo": "David Merino, líder canario de la mayor criptoestafa, reaparece tras tres años fugado: \"No me he quedado el dinero de nadie\"", "medio": "laprovincia", "temas": ["justicia"], "url": "https://www.laprovincia.es/sucesos/sucesos-en-canarias/2026/03/24/david-merino-lider-canario-mayor-128333836.html"}, {"titulo": "El Gobierno frena la intención del PP de obstaculizar la regularización de migrantes", "medio": "laprovincia", "temas": ["migracion"], "url": "https://www.laprovincia.es/espana/2026/03/24/gobierno-frena-intencion-pp-obstaculizar-regularizacion-inmigrantes-128343108.html"}, {"titulo": "Dos personas desafían a la borrasca Therese y navegan en kayak por el barranco de La Aldea en Gran Canaria", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/23/personas-desafian-borrasca-therese-navegan-kayak-barranco-aldea-gran-canaria-128318410.html"}, {"titulo": "El Mediador de Senegal visita Canarias para fortalecer la cooperación en migración", "medio": "laprovincia", "temas": ["migracion"], "url": "https://www.laprovincia.es/canarias/2026/03/24/mediador-senegal-visita-canarias-fortalecer-128352718.html"}, {"titulo": "Manuel Domínguez da por \"agotada\" la negociación de la financiación autonómica en esta legislatura: \"No es ni malo\"", "medio": "laprovincia", "temas": ["presupuestos"], "url": "https://www.laprovincia.es/canarias/2026/03/24/gobierno-canario-da-agotada-negociacion-128350517.html"}, {"titulo": "Canarias llega preparada a la obligatoriedad de la ley contra el desperdicio alimentario", "medio": "laprovincia", "temas": ["economia"], "url": "https://www.laprovincia.es/economia/2026/03/24/canarias-llega-preparada-obligatoriedad-ley-128358448.html"}, {"titulo": "Escudo anticrisis de Canarias: los grupos piden a Clavijo que apruebe ya un decreto propio", "medio": "laprovincia", "temas": ["politica"], "url": "https://www.laprovincia.es/canarias/2026/03/24/escudo-anticrisis-canarias-grupos-piden-128350970.html"}, {"titulo": "Parón en la ULPGC: suspendida toda la actividad presencial por la borrasca", "medio": "laprovincia", "temas": ["medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/24/ulpgc-faculta-centros-pasar-docencia-128345729.html"}, {"titulo": "Canarias suspende las clases presenciales: miércoles telemático en Gran Canaria, Tenerife y La Palma por la borrasca Therese", "medio": "laprovincia", "temas": ["economia", "politica", "medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/24/educacion-adelanta-salida-centros-educativos-128347590.html"}, {"titulo": "Un coche atrapado, alcantarillas rebosadas y palmeras caídas: el paso de la borrasca Therese por Las Palmas de Gran Canaria", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/las-palmas/2026/03/24/coche-atrapado-alcantarillas-rebosadas-therese-128348521.html"}, {"titulo": "DIRECTO | La borrasca Therese continúa en Canarias: carreteras cortadas, clases suspendidas y última hora", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/canarias/2026/03/24/directo-borrasca-therese-canarias-ultima-hora-128067331.html"}, {"titulo": "La borrasca Therese provoca el derrumbe del restaurante El Secuestro en Teror", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/24/borrasca-therese-provoca-derrumbe-restaurante-128357306.html"}, {"titulo": "La UME se despliega en Gran Canaria por la borrasca Therese tras declararse la emergencia por inundaciones", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/24/ume-despliega-gran-canaria-borrasca-128351938.html"}, {"titulo": "Balance de la borrasca Therese en Gran Canaria: 300 incidentes en el norte, 24 presas a rebosar y más de 4 millones de euros para arreglar la infraestructura", "medio": "laprovincia", "temas": ["economia", "medio_ambiente"], "url": "https://www.laprovincia.es/gran-canaria/2026/03/24/segunda-semana-borrasca-therese-gran-128360608.html"}, {"titulo": "Un halcón del régimen e histórico detractor de EE UU, elegido nuevo hombre fuerte de Irán", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/internacional/oriente-proximo/halcon-regimen-historico-detractor-elegido-nuevo-hombre-20260324150336-ntrc.html"}, {"titulo": "Binter lanza su clase Premium en las rutas con Dakar y Nuakchot tras su incorporación en la conexión con Madrid", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/empresas/bp-binter-lanza-clase-premium-rutas-dakar-nuakchot-20260324140343-nt.html"}, {"titulo": "La duda de Meloni tras el fracaso del referéndum en Italia: elecciones anticipadas o un año de desgaste", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/internacional/europa/duda-meloni-tras-fracaso-referendum-italia-elecciones-20260324151934-ntrc.html"}, {"titulo": "«Estamos ante una situación histórica»: Rueda de prensa del Gobierno canario y Cabildo de Gran Canaria para informar de la borrasca Therese", "medio": "canarias7", "temas": ["politica", "economia", "medio_ambiente"], "url": "https://www.canarias7.es/canarias/rueda-prensa-directo-gobierno-canario-cabildo-informar-20260324134932-nt.html"}, {"titulo": "Medidas para paliar los efectos de la guerra de Irán o el crecimiento económico de las islas, a debate en el Parlamento de Canarias", "medio": "canarias7", "temas": ["politica", "economia"], "url": "https://www.canarias7.es/politica/medidas-paliar-efectos-guerra-iran-crecimiento-economico-20260324105723-nt.html"}, {"titulo": "La fuerza de la lluvia por la borrasca Therese se lleva un coche barranco abajo en Moya", "medio": "canarias7", "temas": ["medio_ambiente", "economia"], "url": "https://www.canarias7.es/canarias/gran-canaria/fuerza-lluvia-borrasca-therese-lleva-coche-barranco-20260324144336-nt.html"}, {"titulo": "El Gobierno da luz verde a la obligación para pymes y autónomos de emitir facturas digitales", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/gobierno-luz-verde-obligacion-pymes-autonomos-emitir-20260324132141-ntrc.html"}, {"titulo": "Junts salva al Gobierno al votar 'sí' al decreto anticrisis", "medio": "canarias7", "temas": ["economia", "politica"], "url": "https://www.canarias7.es/nacional/politica/junts-salva-gobierno-votar-decreto-anticrisis-20260324140357-ntrc.html"}, {"titulo": "La perrera de Puerto del Rosario entra en la élite del bienestar animal", "medio": "canarias7", "temas": ["presupuestos"], "url": "https://www.canarias7.es/canarias/fuerteventura/perrera-puerto-rosario-entra-elite-bienestar-animal-20260324145053-nt.html"}, {"titulo": "Díaz desafía al ala socialista del Gobierno y a los tribunales y seguirá adelante con su registro horario", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/economia/trabajo/diaz-desafia-ala-socialista-gobierno-tribunales-seguira-20260324155115-ntrc.html"}, {"titulo": "BMW y Mercedes-Benz podrán vender coches de combustión a partir de 2030", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/motor/economia/bmw-mercedesbenz-podran-vender-coches-combustion-partir-20260324073400-ntrc.html"}, {"titulo": "El Gobierno veta las enmiendas de PP y Junts para obstaculizar la regularización de migrantes", "medio": "canarias7", "temas": ["migracion", "politica"], "url": "https://www.canarias7.es/nacional/politica/gobierno-veta-enmiendas-pp-junts-obstaculizar-regularizacion-20260324133241-ntrc.html"}, {"titulo": "La borrasca Therese golpea Canarias: suspensión de clases en tres islas y última hora de las incidencias por lluvias en directo", "medio": "canarias7", "temas": ["medio_ambiente", "economia"], "url": "https://www.canarias7.es/canarias/borrasca-therese-canarias-directo-ultima-hora-temporal-20260324071455-di.html"}, {"titulo": "El Atlético oficializa la marcha de Griezmann al Orlando City", "medio": "canarias7", "temas": ["economia"], "url": "https://www.canarias7.es/deportes/futbol/atletico-oficializa-marcha-griezmann-orlando-city-20260324151449-ntrc.html"}];
+const MEDIO_COLORS = {
+  canarias7: '#1a5fa8', laprovincia: '#d63b2f', eldia: '#2e7d32',
+  laopinion: '#e65100', diariodeavisos: '#6a1b9a', atlanticohoy: '#00695c',
+  canariasahora: '#c62828', elhierrohoy: '#5d4037', lancelotdigital: '#bf360c',
+  eltime: '#d4a017', lavozdefuerteventura: '#0d47a1', gomeraverde: '#33691e'
+};
+const TEMA_COLORS = {
+  economia: '#2e7d32', medio_ambiente: '#1b5e20', politica: '#4a148c',
+  turismo: '#0277bd', migracion: '#1565c0', presupuestos: '#e65100',
+  vivienda: '#f57f17', sanidad: '#008591', justicia: '#37474f',
+  cuidados: '#ef6c00', violencia_genero: '#880e4f', diversidad: '#7b1fa2',
+  igualdad: '#ad1457', salud_mental: '#d28aff', dependencia_discapacidad: '#0ea5e9'
+};
 
-const LM={canarias7:"Canarias7",laprovincia:"La Provincia",eldia:"El Día",laopinion:"La Opinión",diariodeavisos:"Diario de Avisos",atlanticohoy:"Atlántico Hoy",canariasahora:"Canarias Ahora"};
-const LT={politica:"Política",medio_ambiente:"Medio Amb.",economia:"Economía",sanidad:"Sanidad",vivienda:"Vivienda",presupuestos:"Presupuestos",violencia_genero:"Violencia Gén.",turismo:"Turismo",migracion:"Migración",salud_mental:"Salud Mental",dependencia_discapacidad:"Dep. y Discap."};
+// ═══════════════════════════════════════════════════════
+//  ETIQUETAS LEGIBLES
+// ═══════════════════════════════════════════════════════
+const LM = {
+  canarias7: 'Canarias7', laprovincia: 'La Provincia', eldia: 'El Día',
+  laopinion: 'La Opinión', diariodeavisos: 'Diario de Avisos',
+  atlanticohoy: 'Atlántico Hoy', canariasahora: 'Canarias Ahora',
+  elhierrohoy: 'El Hierro Hoy', lancelotdigital: 'Lancelot Digital',
+  eltime: 'El Time', lavozdefuerteventura: 'La Voz de Ftv.',
+  gomeraverde: 'Gomera Verde'
+};
+const LT = {
+  politica: 'Política', medio_ambiente: 'Medio Amb.', economia: 'Economía',
+  sanidad: 'Sanidad', vivienda: 'Vivienda', presupuestos: 'Presupuestos',
+  violencia_genero: 'Violencia Gén.', turismo: 'Turismo',
+  migracion: 'Migración', salud_mental: 'Salud Mental',
+  dependencia_discapacidad: 'Dep. y Discap.', justicia: 'Justicia',
+  cuidados: 'Cuidados', diversidad: 'Diversidad', igualdad: 'Igualdad'
+};
 
 // ═══════════════════════════════════════════════════════
-//  ESTADO
+//  VARIABLES GLOBALES (se llenan tras fetch)
 // ═══════════════════════════════════════════════════════
-let S={medio:'todos',tema:'todos'};
-const PG={page:0,perPage:8};
+let NW = [], MM = [], TM = [], HM = [], TD = [];
+let CM = {}, CT = {};
+let S = { medio: 'todos', tema: 'todos' };
+const PG = { page: 0, perPage: 8 };
 
 // ═══════════════════════════════════════════════════════
 //  TOOLTIP
 // ═══════════════════════════════════════════════════════
-const TIP=document.getElementById('tooltip');
-function tip(e,h){TIP.style.display='block';TIP.innerHTML=h;mvt(e)}
-function mvt(e){const vw=innerWidth,vh=innerHeight,tw=TIP.offsetWidth,th=TIP.offsetHeight;TIP.style.left=(e.clientX+14+tw>vw?e.clientX-tw-6:e.clientX+12)+'px';TIP.style.top=(e.clientY+16+th>vh?e.clientY-th-6:e.clientY+12)+'px'}
-function htip(){TIP.style.display='none'}
+const TIP = document.getElementById('tooltip');
+function tip(e, h) { TIP.style.display = 'block'; TIP.innerHTML = h; mvt(e) }
+function mvt(e) { const vw = innerWidth, vh = innerHeight, tw = TIP.offsetWidth, th = TIP.offsetHeight; TIP.style.left = (e.clientX + 14 + tw > vw ? e.clientX - tw - 6 : e.clientX + 12) + 'px'; TIP.style.top = (e.clientY + 16 + th > vh ? e.clientY - th - 6 : e.clientY + 12) + 'px' }
+function htip() { TIP.style.display = 'none' }
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim() }
 
-// helpers — resolve CSS vars at render time (works for light/dark)
-function cssVar(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+// ═══════════════════════════════════════════════════════
+//  FETCH DESDE SUPABASE
+// ═══════════════════════════════════════════════════════
+async function fetchNoticias() {
+  // Supabase REST API con paginación (máx 1000 por request)
+  const allRows = [];
+  let from = 0;
+  const step = 1000;
+  while (true) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/v_noticias_medios?select=titulo,medio,temas,url,fecha_pub&order=fecha_pub.desc&offset=${from}&limit=${step}`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Accept': 'application/json',
+          'Prefer': 'count=exact'
+        }
+      }
+    );
+    const data = await res.json();
+    if (!data.length) break;
+    allRows.push(...data);
+    if (data.length < step) break;
+    from += step;
+  }
+  return allRows;
+}
+
+function buildAggregates(noticias) {
+  // NW — array de noticias para la tabla y word cloud
+  NW = noticias.map(n => ({
+    titulo: n.titulo,
+    medio: n.medio,
+    temas: n.temas || [],
+    url: n.url
+  }));
+
+  // MM — conteo por medio
+  const medioCounts = {};
+  NW.forEach(n => { medioCounts[n.medio] = (medioCounts[n.medio] || 0) + 1; });
+  const defaultColors = ['#4f9cf9','#f97316','#22d3a5','#c084fc','#f43f5e','#fbbf24','#34d399','#a78bfa','#f472b6','#67e8f9','#86efac','#fdba74'];
+  const medioList = Object.keys(medioCounts).sort((a, b) => medioCounts[b] - medioCounts[a]);
+  MM = medioList.map((m, i) => ({
+    medio: m,
+    total: medioCounts[m],
+    color: MEDIO_COLORS[m] || defaultColors[i % defaultColors.length]
+  }));
+  CM = Object.fromEntries(MM.map(d => [d.medio, d.color]));
+
+  // TM — conteo por tema
+  const temaCounts = {};
+  NW.forEach(n => (n.temas || []).forEach(t => { temaCounts[t] = (temaCounts[t] || 0) + 1; }));
+  const temaList = Object.keys(temaCounts).sort((a, b) => temaCounts[b] - temaCounts[a]);
+  TM = temaList.map((t, i) => ({
+    tema: t,
+    n: temaCounts[t],
+    color: TEMA_COLORS[t] || defaultColors[i % defaultColors.length]
+  }));
+  CT = Object.fromEntries(TM.map(d => [d.tema, d.color]));
+
+  // HM — cruce medio × tema
+  HM = [];
+  const hmMap = {};
+  NW.forEach(n => (n.temas || []).forEach(t => {
+    const key = `${n.medio}|${t}`;
+    hmMap[key] = (hmMap[key] || 0) + 1;
+  }));
+  Object.entries(hmMap).forEach(([k, v]) => {
+    const [medio, tema] = k.split('|');
+    HM.push({ medio, tema, n: v });
+  });
+
+  // TD — distribución temporal por medio y hora (agrupado por hora del día)
+  const tdMap = {};
+  noticias.forEach(n => {
+    if (!n.fecha_pub) return;
+    // Agrupar por fecha+hora (redondear a hora)
+    const dt = new Date(n.fecha_pub);
+    const hourKey = dt.toISOString().slice(0, 13) + ':00';
+    const key = `${n.medio}|${hourKey}`;
+    tdMap[key] = (tdMap[key] || 0) + 1;
+  });
+  TD = Object.entries(tdMap).map(([k, v]) => {
+    const [medio, hora] = k.split('|');
+    return { medio, hora: hora.replace('T', 'T').slice(0, 16), n: v };
+  });
+}
+
+function buildDynamicUI() {
+  // Badges del header
+  const uniqueMedios = [...new Set(NW.map(n => n.medio))];
+  const uniqueTemas = [...new Set(NW.flatMap(n => n.temas || []))];
+  document.getElementById('badge-noticias').textContent = NW.length;
+  document.getElementById('badge-medios').textContent = uniqueMedios.length;
+  document.getElementById('badge-temas').textContent = uniqueTemas.length;
+
+  // Botones de medios
+  const bar = document.getElementById('filters-bar');
+  const sep = bar.querySelector('.filter-sep');
+  // Eliminar botones de medio previos (excepto "Todos")
+  bar.querySelectorAll('.filter-btn[data-medio]:not([data-medio="todos"])').forEach(b => b.remove());
+  MM.forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.dataset.medio = m.medio;
+    btn.textContent = LM[m.medio] || m.medio;
+    btn.onclick = () => setMedio(m.medio, btn);
+    bar.insertBefore(btn, sep);
+  });
+
+  // Select de temas
+  const sel = document.getElementById('filtro-tema');
+  sel.innerHTML = '<option value="todos">Todos los temas</option>';
+  TM.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.tema;
+    opt.textContent = LT[t.tema] || t.tema;
+    sel.appendChild(opt);
+  });
+}
 
 // ═══════════════════════════════════════════════════════
 //  DATOS DERIVADOS
 // ═══════════════════════════════════════════════════════
-function filtNW(){let d=NW;if(S.medio!=='todos')d=d.filter(n=>n.medio===S.medio);if(S.tema!=='todos')d=d.filter(n=>n.temas&&n.temas.includes(S.tema));return d}
-function filtMM(){if(S.tema==='todos')return MM.slice().sort((a,b)=>b.total-a.total);const lk={};HM.filter(h=>h.tema===S.tema).forEach(h=>lk[h.medio]=h.n);return MM.map(m=>({...m,total:lk[m.medio]||0})).sort((a,b)=>b.total-a.total)}
-function filtTM(){if(S.medio==='todos')return TM;const lk={};HM.filter(h=>h.medio===S.medio).forEach(h=>lk[h.tema]=h.n);return TM.map(t=>({...t,n:lk[t.tema]||0})).sort((a,b)=>b.n-a.n)}
-function filtTD(){return S.medio==='todos'?TD:TD.filter(d=>d.medio===S.medio)}
+function filtNW() { let d = NW; if (S.medio !== 'todos') d = d.filter(n => n.medio === S.medio); if (S.tema !== 'todos') d = d.filter(n => n.temas && n.temas.includes(S.tema)); return d }
+function filtMM() { if (S.tema === 'todos') return MM.slice().sort((a, b) => b.total - a.total); const lk = {}; HM.filter(h => h.tema === S.tema).forEach(h => lk[h.medio] = h.n); return MM.map(m => ({ ...m, total: lk[m.medio] || 0 })).sort((a, b) => b.total - a.total) }
+function filtTM() { if (S.medio === 'todos') return TM; const lk = {}; HM.filter(h => h.medio === S.medio).forEach(h => lk[h.tema] = h.n); return TM.map(t => ({ ...t, n: lk[t.tema] || 0 })).sort((a, b) => b.n - a.n) }
+function filtTD() { return S.medio === 'todos' ? TD : TD.filter(d => d.medio === S.medio) }
 
 // ═══════════════════════════════════════════════════════
 //  ACCIONES
 // ═══════════════════════════════════════════════════════
-function setMedio(m,btn){PG.page=0;S.medio=(S.medio===m&&m!=='todos')?'todos':m;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));redraw()}
-function setTema(t){PG.page=0;S.tema=t;document.getElementById('filtro-tema').value=t;redraw()}
-function resetFiltros(){PG.page=0;S={medio:'todos',tema:'todos'};document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio==='todos'));document.getElementById('filtro-tema').value='todos';redraw()}
-function clkMedio(m){PG.page=0;S.medio=(S.medio===m)?'todos':m;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));redraw()}
-function clkTema(t){PG.page=0;S.tema=(S.tema===t)?'todos':t;document.getElementById('filtro-tema').value=S.tema;redraw()}
-function clkHeat(m,t){if(S.medio===m&&S.tema===t){resetFiltros();return}PG.page=0;S.medio=m;S.tema=t;document.querySelectorAll('.filter-btn[data-medio]').forEach(b=>b.classList.toggle('active',b.dataset.medio===S.medio));document.getElementById('filtro-tema').value=t;redraw()}
+function setMedio(m, btn) { PG.page = 0; S.medio = (S.medio === m && m !== 'todos') ? 'todos' : m; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); redraw() }
+function setTema(t) { PG.page = 0; S.tema = t; document.getElementById('filtro-tema').value = t; redraw() }
+function resetFiltros() { PG.page = 0; S = { medio: 'todos', tema: 'todos' }; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === 'todos')); document.getElementById('filtro-tema').value = 'todos'; redraw() }
+function clkMedio(m) { PG.page = 0; S.medio = (S.medio === m) ? 'todos' : m; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); redraw() }
+function clkTema(t) { PG.page = 0; S.tema = (S.tema === t) ? 'todos' : t; document.getElementById('filtro-tema').value = S.tema; redraw() }
+function clkHeat(m, t) { if (S.medio === m && S.tema === t) { resetFiltros(); return } PG.page = 0; S.medio = m; S.tema = t; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); document.getElementById('filtro-tema').value = t; redraw() }
 
 // ═══════════════════════════════════════════════════════
 //  KPIs
 // ═══════════════════════════════════════════════════════
-function updKPIs(){
-  const d=filtNW();const n=d.length;const ct=d.filter(x=>x.temas&&x.temas.length>0).length;
-  document.getElementById('kn').textContent=n;
-  document.getElementById('kct').textContent=ct;
-  document.getElementById('kcob').textContent=n>0?Math.round(ct/n*100)+'%':'—%';
-  const tm=filtTM();const top=tm.find(t=>t.n>0);
-  document.getElementById('ktd').textContent=top?LT[top.tema]||top.tema:'—';
-  document.getElementById('ktdn').textContent=top?`${top.n} menciones`:'';
-  const mf=filtMM();const tm0=mf[0];
-  document.getElementById('kml').textContent=tm0&&tm0.total>0?LM[tm0.medio]||tm0.medio:'—';
-  document.getElementById('kmln').textContent=tm0&&tm0.total>0?`${tm0.total} noticias`:'';
-  document.getElementById('kma').textContent=mf.filter(m=>m.total>0).length;
-  const has=S.medio!=='todos'||S.tema!=='todos';
-  document.getElementById('afbar').classList.toggle('visible',has);
-  const afm=document.getElementById('af-medio'),aft=document.getElementById('af-tema'),afc=document.getElementById('af-count');
-  afm.style.display=S.medio!=='todos'?'inline':'none';afm.textContent=S.medio!=='todos'?`✕ ${LM[S.medio]||S.medio}`:'';
-  aft.style.display=S.tema!=='todos'?'inline':'none';aft.textContent=S.tema!=='todos'?`✕ ${LT[S.tema]||S.tema}`:'';
-  afc.textContent=has?`${n} noticias mostradas`:'';
+function updKPIs() {
+  const d = filtNW(); const n = d.length; const ct = d.filter(x => x.temas && x.temas.length > 0).length;
+  document.getElementById('kn').textContent = n;
+  document.getElementById('kct').textContent = ct;
+  document.getElementById('kcob').textContent = n > 0 ? Math.round(ct / n * 100) + '%' : '—%';
+  const tm = filtTM(); const top = tm.find(t => t.n > 0);
+  document.getElementById('ktd').textContent = top ? LT[top.tema] || top.tema : '—';
+  document.getElementById('ktdn').textContent = top ? `${top.n} menciones` : '';
+  const mf = filtMM(); const tm0 = mf[0];
+  document.getElementById('kml').textContent = tm0 && tm0.total > 0 ? LM[tm0.medio] || tm0.medio : '—';
+  document.getElementById('kmln').textContent = tm0 && tm0.total > 0 ? `${tm0.total} noticias` : '';
+  document.getElementById('kma').textContent = mf.filter(m => m.total > 0).length;
+  const has = S.medio !== 'todos' || S.tema !== 'todos';
+  document.getElementById('afbar').classList.toggle('visible', has);
+  const afm = document.getElementById('af-medio'), aft = document.getElementById('af-tema'), afc = document.getElementById('af-count');
+  afm.style.display = S.medio !== 'todos' ? 'inline' : 'none'; afm.textContent = S.medio !== 'todos' ? `✕ ${LM[S.medio] || S.medio}` : '';
+  aft.style.display = S.tema !== 'todos' ? 'inline' : 'none'; aft.textContent = S.tema !== 'todos' ? `✕ ${LT[S.tema] || S.tema}` : '';
+  afc.textContent = has ? `${n} noticias mostradas` : '';
 }
 
 // ═══════════════════════════════════════════════════════
 //  1. BARRAS MEDIOS
 // ═══════════════════════════════════════════════════════
-function drawB(){
-  const s=d3.select('#cb');s.selectAll('*').remove();
-  const W=s.node().parentElement.clientWidth-4,H=270,m={top:20,right:20,bottom:55,left:38};
-  const w=W-m.left-m.right,h=H-m.top-m.bottom;
-  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
-  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
-  const data=filtMM();const mx=d3.max(data,d=>d.total)||1;
-  const x=d3.scaleBand().domain(data.map(d=>d.medio)).range([0,w]).padding(0.3);
-  const y=d3.scaleLinear().domain([0,mx*1.15]).range([h,0]);
-  const border=cssVar('--border');const muted=cssVar('--muted');
-  g.append('g').attr('class','grid').call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat('')).call(g=>g.select('.domain').remove());
-  g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x).tickFormat(d=>LM[d]||d)).selectAll('text').style('text-anchor','end').attr('transform','rotate(-22)').attr('dx','-.4em').attr('dy','.6em').style('font-size','11px').style('font-family','Sora,sans-serif');
-  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
-  g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar-i')
-    .attr('x',d=>x(d.medio)).attr('y',d=>y(d.total)).attr('width',x.bandwidth()).attr('height',d=>h-y(d.total))
-    .attr('fill',d=>d.color).attr('rx',5).attr('ry',5)
-    .style('opacity',d=>(S.medio==='todos'||S.medio===d.medio)?1:0.18)
-    .on('mousemove',function(e,d){tip(e,`<strong>${LM[d.medio]||d.medio}</strong>Noticias: <b>${d.total}</b>${S.tema!=='todos'?`<br>Tema: ${LT[S.tema]}`:''}${S.medio===d.medio?'<br><em>↺ Clic para quitar</em>':'<br><em>Clic para filtrar</em>'}`)})
-    .on('mouseleave',htip).on('click',(e,d)=>clkMedio(d.medio));
-  g.selectAll('.bv').data(data).enter().append('text').attr('x',d=>x(d.medio)+x.bandwidth()/2).attr('y',d=>y(d.total)-5).attr('text-anchor','middle').attr('fill',d=>d.color).attr('font-size','11px').attr('font-weight','600').style('opacity',d=>d.total>0?1:0).text(d=>d.total);
-  document.getElementById('chip-b').textContent=`n=${data.reduce((a,b)=>a+b.total,0)}`;
-  document.getElementById('lb').innerHTML=data.map(d=>`<div class="legend-item" onclick="clkMedio('${d.medio}')"><div class="ldot" style="background:${d.color}"></div>${LM[d.medio]||d.medio}</div>`).join('');
+function drawB() {
+  const s = d3.select('#cb'); s.selectAll('*').remove();
+  const W = s.node().parentElement.clientWidth - 4, H = 270, m = { top: 20, right: 20, bottom: 55, left: 38 };
+  const w = W - m.left - m.right, h = H - m.top - m.bottom;
+  s.attr('viewBox', `0 0 ${W} ${H}`).attr('width', W).attr('height', H);
+  const g = s.append('g').attr('transform', `translate(${m.left},${m.top})`);
+  const data = filtMM(); const mx = d3.max(data, d => d.total) || 1;
+  const x = d3.scaleBand().domain(data.map(d => d.medio)).range([0, w]).padding(0.3);
+  const y = d3.scaleLinear().domain([0, mx * 1.15]).range([h, 0]);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat('')).call(g => g.select('.domain').remove());
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).tickFormat(d => LM[d] || d)).selectAll('text').style('text-anchor', 'end').attr('transform', 'rotate(-22)').attr('dx', '-.4em').attr('dy', '.6em').style('font-size', '11px').style('font-family', 'Sora,sans-serif');
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5));
+  g.selectAll('.bar').data(data).enter().append('rect').attr('class', 'bar-i')
+    .attr('x', d => x(d.medio)).attr('y', d => y(d.total)).attr('width', x.bandwidth()).attr('height', d => h - y(d.total))
+    .attr('fill', d => d.color).attr('rx', 5).attr('ry', 5)
+    .style('opacity', d => (S.medio === 'todos' || S.medio === d.medio) ? 1 : 0.18)
+    .on('mousemove', function (e, d) { tip(e, `<strong>${LM[d.medio] || d.medio}</strong>Noticias: <b>${d.total}</b>${S.tema !== 'todos' ? `<br>Tema: ${LT[S.tema]}` : ''}${S.medio === d.medio ? '<br><em>↺ Clic para quitar</em>' : '<br><em>Clic para filtrar</em>'}`) })
+    .on('mouseleave', htip).on('click', (e, d) => clkMedio(d.medio));
+  g.selectAll('.bv').data(data).enter().append('text').attr('x', d => x(d.medio) + x.bandwidth() / 2).attr('y', d => y(d.total) - 5).attr('text-anchor', 'middle').attr('fill', d => d.color).attr('font-size', '11px').attr('font-weight', '600').style('opacity', d => d.total > 0 ? 1 : 0).text(d => d.total);
+  document.getElementById('chip-b').textContent = `n=${data.reduce((a, b) => a + b.total, 0)}`;
+  document.getElementById('lb').innerHTML = data.map(d => `<div class="legend-item" onclick="clkMedio('${d.medio}')"><div class="ldot" style="background:${d.color}"></div>${LM[d.medio] || d.medio}</div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════════
 //  2. LÍNEAS
 // ═══════════════════════════════════════════════════════
-function drawL(){
-  const s=d3.select('#cl');s.selectAll('*').remove();
-  const W=s.node().parentElement.clientWidth-4,H=270,m={top:20,right:20,bottom:55,left:38};
-  const w=W-m.left-m.right,h=H-m.top-m.bottom;
-  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
-  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
-  const parse=d3.timeParse('%Y-%m-%dT%H:%M'),fmt=d3.timeFormat('%d/%m');
-  const raw=filtTD().map(d=>({...d,ts:parse(d.hora)}));
-  if(!raw.length){g.append('text').attr('x',w/2).attr('y',h/2).attr('text-anchor','middle').style('fill',cssVar('--muted')).style('font-family','Sora,sans-serif').text('Sin datos para este filtro');return}
-  const allH=[...new Set(TD.map(d=>d.hora))].sort();
-  const medios=S.medio!=='todos'?[S.medio]:[...new Set(TD.map(d=>d.medio))];
-  const series=medios.map(me=>({medio:me,color:CM[me]||'#94a3b8',values:allH.map(h=>{const pt=raw.find(p=>p.medio===me&&p.hora===h);return{ts:parse(h),n:pt?pt.n:0}})}));
-  const x=d3.scaleTime().domain(d3.extent(raw,d=>d.ts)).range([0,w]);
-  const y=d3.scaleLinear().domain([0,(d3.max(raw,d=>d.n)||1)*1.15]).range([h,0]);
-  g.append('g').attr('class','grid').call(d3.axisLeft(y).ticks(4).tickSize(-w).tickFormat('')).call(g=>g.select('.domain').remove());
-  g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x).ticks(6).tickFormat(fmt));
-  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(4));
-  const line=d3.line().x(d=>x(d.ts)).y(d=>y(d.n)).curve(d3.curveMonotoneX);
-  series.forEach(sr=>{
-    g.append('path').datum(sr.values).attr('class','line-path').attr('stroke',sr.color).attr('d',line);
-    g.selectAll(null).data(sr.values.filter(d=>d.n>0)).enter().append('circle').attr('cx',d=>x(d.ts)).attr('cy',d=>y(d.n)).attr('r',4).attr('fill',sr.color).attr('stroke',cssVar('--surface')).attr('stroke-width',1.5)
-      .on('mousemove',(e,d)=>tip(e,`<strong>${LM[sr.medio]||sr.medio}</strong>Hora: ${fmt(d.ts)}<br>Noticias: <b>${d.n}</b>`))
-      .on('mouseleave',htip).on('click',()=>clkMedio(sr.medio));
+function drawL() {
+  const s = d3.select('#cl'); s.selectAll('*').remove();
+  const W = s.node().parentElement.clientWidth - 4, H = 270, m = { top: 20, right: 20, bottom: 55, left: 38 };
+  const w = W - m.left - m.right, h = H - m.top - m.bottom;
+  s.attr('viewBox', `0 0 ${W} ${H}`).attr('width', W).attr('height', H);
+  const g = s.append('g').attr('transform', `translate(${m.left},${m.top})`);
+  const parse = d3.timeParse('%Y-%m-%dT%H:%M'), fmt = d3.timeFormat('%d/%m');
+  const raw = filtTD().map(d => ({ ...d, ts: parse(d.hora) }));
+  if (!raw.length) { g.append('text').attr('x', w / 2).attr('y', h / 2).attr('text-anchor', 'middle').style('fill', cssVar('--muted')).style('font-family', 'Sora,sans-serif').text('Sin datos para este filtro'); return }
+  const allH = [...new Set(TD.map(d => d.hora))].sort();
+  const medios = S.medio !== 'todos' ? [S.medio] : [...new Set(TD.map(d => d.medio))];
+  const series = medios.map(me => ({ medio: me, color: CM[me] || '#94a3b8', values: allH.map(h => { const pt = raw.find(p => p.medio === me && p.hora === h); return { ts: parse(h), n: pt ? pt.n : 0 } }) }));
+  const x = d3.scaleTime().domain(d3.extent(raw, d => d.ts)).range([0, w]);
+  const y = d3.scaleLinear().domain([0, (d3.max(raw, d => d.n) || 1) * 1.15]).range([h, 0]);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(4).tickSize(-w).tickFormat('')).call(g => g.select('.domain').remove());
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(6).tickFormat(fmt));
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(4));
+  const line = d3.line().x(d => x(d.ts)).y(d => y(d.n)).curve(d3.curveMonotoneX);
+  series.forEach(sr => {
+    g.append('path').datum(sr.values).attr('class', 'line-path').attr('stroke', sr.color).attr('d', line);
+    g.selectAll(null).data(sr.values.filter(d => d.n > 0)).enter().append('circle').attr('cx', d => x(d.ts)).attr('cy', d => y(d.n)).attr('r', 4).attr('fill', sr.color).attr('stroke', cssVar('--surface')).attr('stroke-width', 1.5)
+      .on('mousemove', (e, d) => tip(e, `<strong>${LM[sr.medio] || sr.medio}</strong>Hora: ${fmt(d.ts)}<br>Noticias: <b>${d.n}</b>`))
+      .on('mouseleave', htip).on('click', () => clkMedio(sr.medio));
   });
-  document.getElementById('ll').innerHTML=series.map(sr=>`<div class="legend-item" onclick="clkMedio('${sr.medio}')"><div class="ldot" style="background:${sr.color}"></div>${LM[sr.medio]||sr.medio}</div>`).join('');
+  document.getElementById('ll').innerHTML = series.map(sr => `<div class="legend-item" onclick="clkMedio('${sr.medio}')"><div class="ldot" style="background:${sr.color}"></div>${LM[sr.medio] || sr.medio}</div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════════
 //  3. BARRAS TEMAS
 // ═══════════════════════════════════════════════════════
-function drawT(){
-  const s=d3.select('#ct');s.selectAll('*').remove();
-  const body=s.node().parentElement;
-  const data=filtTM();
-  const W=body.clientWidth-4;
-  const minH=330;
-  const H=Math.max(minH, body.clientHeight-4);
-  const m={top:12,right:48,bottom:12,left:132};
-  const w=W-m.left-m.right,h=H-m.top-m.bottom;
-  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
-  const g=s.append('g').attr('transform',`translate(${m.left},${m.top})`);
-  const mx=d3.max(data,d=>d.n)||1;
-  const y=d3.scaleBand().domain(data.map(d=>d.tema)).range([0,h]).padding(0.22);
-  const x=d3.scaleLinear().domain([0,mx*1.15]).range([0,w]);
-  g.append('g').attr('class','grid').call(d3.axisTop(x).ticks(5).tickSize(-h).tickFormat('')).call(g=>g.select('.domain').remove());
-  g.append('g').attr('class','axis').call(d3.axisLeft(y).tickFormat(d=>LT[d]||d));
-  g.selectAll('.bar').data(data).enter().append('rect').attr('class','bar-i')
-    .attr('x',0).attr('y',d=>y(d.tema)).attr('width',d=>Math.max(d.n>0?2:0,x(d.n))).attr('height',y.bandwidth())
-    .attr('fill',d=>d.color).attr('rx',4).attr('ry',4)
-    .style('opacity',d=>(S.tema==='todos'||S.tema===d.tema)?1:0.18)
-    .on('mousemove',(e,d)=>tip(e,`<strong>${LT[d.tema]||d.tema}</strong>Menciones: <b>${d.n}</b>${S.medio!=='todos'?`<br>Medio: ${LM[S.medio]}`:''}${S.tema===d.tema?'<br><em>↺ Clic para quitar</em>':'<br><em>Clic para filtrar</em>'}`))
-    .on('mouseleave',htip).on('click',(e,d)=>clkTema(d.tema));
-  g.selectAll('.tv').data(data).enter().append('text').attr('x',d=>x(d.n)+6).attr('y',d=>y(d.tema)+y.bandwidth()/2).attr('dominant-baseline','middle').attr('fill',d=>d.color).attr('font-size','11px').attr('font-weight','600').style('opacity',d=>d.n>0?1:0).text(d=>d.n);
-  document.getElementById('chip-t').textContent=`n=${data.reduce((a,b)=>a+b.n,0)}`;
+function drawT() {
+  const s = d3.select('#ct'); s.selectAll('*').remove();
+  const body = s.node().parentElement;
+  const data = filtTM();
+  const W = body.clientWidth - 4;
+  const minH = 330;
+  const H = Math.max(minH, body.clientHeight - 4);
+  const m = { top: 12, right: 48, bottom: 12, left: 132 };
+  const w = W - m.left - m.right, h = H - m.top - m.bottom;
+  s.attr('viewBox', `0 0 ${W} ${H}`).attr('width', W).attr('height', H);
+  const g = s.append('g').attr('transform', `translate(${m.left},${m.top})`);
+  const mx = d3.max(data, d => d.n) || 1;
+  const y = d3.scaleBand().domain(data.map(d => d.tema)).range([0, h]).padding(0.22);
+  const x = d3.scaleLinear().domain([0, mx * 1.15]).range([0, w]);
+  g.append('g').attr('class', 'grid').call(d3.axisTop(x).ticks(5).tickSize(-h).tickFormat('')).call(g => g.select('.domain').remove());
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).tickFormat(d => LT[d] || d));
+  g.selectAll('.bar').data(data).enter().append('rect').attr('class', 'bar-i')
+    .attr('x', 0).attr('y', d => y(d.tema)).attr('width', d => Math.max(d.n > 0 ? 2 : 0, x(d.n))).attr('height', y.bandwidth())
+    .attr('fill', d => d.color).attr('rx', 4).attr('ry', 4)
+    .style('opacity', d => (S.tema === 'todos' || S.tema === d.tema) ? 1 : 0.18)
+    .on('mousemove', (e, d) => tip(e, `<strong>${LT[d.tema] || d.tema}</strong>Menciones: <b>${d.n}</b>${S.medio !== 'todos' ? `<br>Medio: ${LM[S.medio]}` : ''}${S.tema === d.tema ? '<br><em>↺ Clic para quitar</em>' : '<br><em>Clic para filtrar</em>'}`))
+    .on('mouseleave', htip).on('click', (e, d) => clkTema(d.tema));
+  g.selectAll('.tv').data(data).enter().append('text').attr('x', d => x(d.n) + 6).attr('y', d => y(d.tema) + y.bandwidth() / 2).attr('dominant-baseline', 'middle').attr('fill', d => d.color).attr('font-size', '11px').attr('font-weight', '600').style('opacity', d => d.n > 0 ? 1 : 0).text(d => d.n);
+  document.getElementById('chip-t').textContent = `n=${data.reduce((a, b) => a + b.n, 0)}`;
 }
 
 // ═══════════════════════════════════════════════════════
 //  4. HEATMAP
 // ═══════════════════════════════════════════════════════
-function drawH(){
-  const s=d3.select('#ch');s.selectAll('*').remove();
-  const wrap=s.node().parentElement;
-  const MORD=MM.map(d=>d.medio),TORD=TM.map(d=>d.tema);
-  const minH=330;
-  const lftM=178,topM=58,rgtM=12,btmM=12,cW=115,lineH=14;
-  const targetH=Math.max(minH, wrap.clientHeight-4);
-  const rH=Math.max(28, Math.floor((targetH-topM-btmM)/Math.max(1,TORD.length)));
-  const W=lftM+cW*MORD.length+rgtM,H=topM+TORD.length*rH+btmM;
-  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H).style('min-width',W+'px');
-  const mx=d3.max(HM,d=>d.n)||1;
-  const isDark=document.documentElement.dataset.theme==='dark';
-  const colSc=d3.scaleSequential().domain([0,mx]).interpolator(t=>d3.interpolate(isDark?'#0d1219':'#e8edf5',isDark?'#4f9cf9':'#2563eb')(t));
+function drawH() {
+  const s = d3.select('#ch'); s.selectAll('*').remove();
+  const wrap = s.node().parentElement;
+  const MORD = MM.map(d => d.medio), TORD = TM.map(d => d.tema);
+  const minH = 330;
+  const lftM = 178, topM = 58, rgtM = 12, btmM = 12, cW = 115, lineH = 14;
+  const targetH = Math.max(minH, wrap.clientHeight - 4);
+  const rH = Math.max(28, Math.floor((targetH - topM - btmM) / Math.max(1, TORD.length)));
+  const W = lftM + cW * MORD.length + rgtM, H = topM + TORD.length * rH + btmM;
+  s.attr('viewBox', `0 0 ${W} ${H}`).attr('width', W).attr('height', H).style('min-width', W + 'px');
+  const mx = d3.max(HM, d => d.n) || 1;
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const colSc = d3.scaleSequential().domain([0, mx]).interpolator(t => d3.interpolate(isDark ? '#0d1219' : '#e8edf5', isDark ? '#4f9cf9' : '#2563eb')(t));
 
-  // Parte la etiqueta en ≤2 líneas en el último espacio
-  function splitLbl(str){const w=str.split(' ');if(w.length<2)return[str];const m=Math.ceil(w.length/2);return[w.slice(0,m).join(' '),w.slice(m).join(' ')]}
+  function splitLbl(str) { const w = str.split(' '); if (w.length < 2) return [str]; const m = Math.ceil(w.length / 2); return [w.slice(0, m).join(' '), w.slice(m).join(' ')] }
 
-  // Medios en eje X — texto horizontal multi-línea
-  MORD.forEach((m,i)=>{
-    const cx=lftM+i*cW+cW/2,isA=S.medio==='todos'||S.medio===m;
-    const lines=splitLbl(LM[m]||m);
-    const t=s.append('text').attr('text-anchor','middle')
-      .style('fill',isA?cssVar('--text2'):cssVar('--muted')).style('opacity',isA?1:0.4)
-      .style('font-size','12px').style('cursor','pointer').style('font-family','Sora,sans-serif').style('font-weight','500');
-    lines.forEach((ln,li)=>t.append('tspan').attr('x',cx).attr('y',topM-8-(lines.length-1-li)*lineH).text(ln));
-    t.on('click',()=>clkMedio(m))
-     .on('mousemove',(e)=>tip(e,`<strong>Columna: ${LM[m]||m}</strong><em>Clic para filtrar</em>`))
-     .on('mouseleave',htip);
+  MORD.forEach((m, i) => {
+    const cx = lftM + i * cW + cW / 2, isA = S.medio === 'todos' || S.medio === m;
+    const lines = splitLbl(LM[m] || m);
+    const t = s.append('text').attr('text-anchor', 'middle')
+      .style('fill', isA ? cssVar('--text2') : cssVar('--muted')).style('opacity', isA ? 1 : 0.4)
+      .style('font-size', '12px').style('cursor', 'pointer').style('font-family', 'Sora,sans-serif').style('font-weight', '500');
+    lines.forEach((ln, li) => t.append('tspan').attr('x', cx).attr('y', topM - 8 - (lines.length - 1 - li) * lineH).text(ln));
+    t.on('click', () => clkMedio(m))
+      .on('mousemove', (e) => tip(e, `<strong>Columna: ${LM[m] || m}</strong><em>Clic para filtrar</em>`))
+      .on('mouseleave', htip);
   });
 
-  // Separador horizontal
-  s.append('line').attr('x1',lftM).attr('y1',topM-1).attr('x2',lftM+cW*MORD.length).attr('y2',topM-1).attr('stroke',cssVar('--border')).attr('stroke-width',1);
+  s.append('line').attr('x1', lftM).attr('y1', topM - 1).attr('x2', lftM + cW * MORD.length).attr('y2', topM - 1).attr('stroke', cssVar('--border')).attr('stroke-width', 1);
 
-  // Celdas
-  TORD.forEach((t,j)=>{
-    MORD.forEach((m,i)=>{
-      const cell=HM.find(d=>d.medio===m&&d.tema===t),val=cell?cell.n:0;
-      const isAC=(S.medio==='todos'||S.medio===m)&&(S.tema==='todos'||S.tema===t),isSel=S.medio===m&&S.tema===t;
-      s.append('rect').attr('class','heatmap-cell')
-        .attr('x',lftM+i*cW+3).attr('y',topM+j*rH+3).attr('width',cW-6).attr('height',rH-6).attr('rx',5).attr('ry',5)
-        .attr('fill',val>0?colSc(val):cssVar('--heat0'))
-        .attr('stroke',isSel?cssVar('--accent'):cssVar('--surface')).attr('stroke-width',isSel?2:1)
-        .style('opacity',isAC?1:0.15)
-        .on('mousemove',(e)=>tip(e,`<strong>${LM[m]||m} × ${LT[t]||t}</strong>Noticias: <b>${val}</b><br><em>Clic para filtrar</em>`))
-        .on('mouseleave',htip).on('click',()=>clkHeat(m,t));
-      if(val>0) s.append('text').attr('x',lftM+i*cW+cW/2).attr('y',topM+j*rH+rH/2)
-        .attr('text-anchor','middle').attr('dominant-baseline','middle')
-        .style('fill',val>mx*0.45?'#fff':cssVar('--text2')).style('font-size','12px').style('font-weight','600').style('font-family','Sora,sans-serif')
-        .style('pointer-events','none').style('opacity',isAC?1:0.15).text(val);
+  TORD.forEach((t, j) => {
+    MORD.forEach((m, i) => {
+      const cell = HM.find(d => d.medio === m && d.tema === t), val = cell ? cell.n : 0;
+      const isAC = (S.medio === 'todos' || S.medio === m) && (S.tema === 'todos' || S.tema === t), isSel = S.medio === m && S.tema === t;
+      s.append('rect').attr('class', 'heatmap-cell')
+        .attr('x', lftM + i * cW + 3).attr('y', topM + j * rH + 3).attr('width', cW - 6).attr('height', rH - 6).attr('rx', 5).attr('ry', 5)
+        .attr('fill', val > 0 ? colSc(val) : cssVar('--heat0'))
+        .attr('stroke', isSel ? cssVar('--accent') : cssVar('--surface')).attr('stroke-width', isSel ? 2 : 1)
+        .style('opacity', isAC ? 1 : 0.15)
+        .on('mousemove', (e) => tip(e, `<strong>${LM[m] || m} × ${LT[t] || t}</strong>Noticias: <b>${val}</b><br><em>Clic para filtrar</em>`))
+        .on('mouseleave', htip).on('click', () => clkHeat(m, t));
+      if (val > 0) s.append('text').attr('x', lftM + i * cW + cW / 2).attr('y', topM + j * rH + rH / 2)
+        .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+        .style('fill', val > mx * 0.45 ? '#fff' : cssVar('--text2')).style('font-size', '12px').style('font-weight', '600').style('font-family', 'Sora,sans-serif')
+        .style('pointer-events', 'none').style('opacity', isAC ? 1 : 0.15).text(val);
     });
   });
 
-  // Grupo congelado (etiquetas de fila) — se renderiza encima y se desplaza con el scroll
-  const bg=cssVar('--surface');
-  const frozen=s.append('g').attr('id','ch-frozen');
-  frozen.append('rect').attr('x',0).attr('y',0).attr('width',lftM-5).attr('height',H).attr('fill',bg);
-  frozen.append('line').attr('x1',lftM-5).attr('y1',topM).attr('x2',lftM-5).attr('y2',H-btmM).attr('stroke',cssVar('--border')).attr('stroke-width',1);
-  TORD.forEach((t,j)=>{
-    const isA=S.tema==='todos'||S.tema===t;
-    frozen.append('text').attr('x',lftM-12).attr('y',topM+j*rH+rH/2).attr('text-anchor','end').attr('dominant-baseline','middle')
-      .style('fill',isA?cssVar('--text2'):cssVar('--muted')).style('opacity',isA?1:0.4)
-      .style('font-size','13px').style('cursor','pointer').style('font-family','Sora,sans-serif')
-      .text(LT[t]||t).on('click',()=>clkTema(t))
-      .on('mousemove',(e)=>tip(e,`<strong>Fila: ${LT[t]||t}</strong><em>Clic para filtrar</em>`))
-      .on('mouseleave',htip);
+  const bg = cssVar('--surface');
+  const frozen = s.append('g').attr('id', 'ch-frozen');
+  frozen.append('rect').attr('x', 0).attr('y', 0).attr('width', lftM - 5).attr('height', H).attr('fill', bg);
+  frozen.append('line').attr('x1', lftM - 5).attr('y1', topM).attr('x2', lftM - 5).attr('y2', H - btmM).attr('stroke', cssVar('--border')).attr('stroke-width', 1);
+  TORD.forEach((t, j) => {
+    const isA = S.tema === 'todos' || S.tema === t;
+    frozen.append('text').attr('x', lftM - 12).attr('y', topM + j * rH + rH / 2).attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
+      .style('fill', isA ? cssVar('--text2') : cssVar('--muted')).style('opacity', isA ? 1 : 0.4)
+      .style('font-size', '13px').style('cursor', 'pointer').style('font-family', 'Sora,sans-serif')
+      .text(LT[t] || t).on('click', () => clkTema(t))
+      .on('mousemove', (e) => tip(e, `<strong>Fila: ${LT[t] || t}</strong><em>Clic para filtrar</em>`))
+      .on('mouseleave', htip);
   });
-  frozen.attr('transform',`translate(${wrap.scrollLeft},0)`);
+  frozen.attr('transform', `translate(${wrap.scrollLeft},0)`);
 }
 
-function initHeatmapScroller(){
-  const wrap=document.getElementById('hb');
-  if(!wrap||wrap.dataset.bound==='1') return;
-  wrap.dataset.bound='1';
+function initHeatmapScroller() {
+  const wrap = document.getElementById('hb');
+  if (!wrap || wrap.dataset.bound === '1') return;
+  wrap.dataset.bound = '1';
 
-  // Mantiene el grupo de etiquetas visible al hacer scroll horizontal
-  wrap.addEventListener('scroll',()=>{
-    const frozen=document.getElementById('ch-frozen');
-    if(frozen)frozen.setAttribute('transform',`translate(${wrap.scrollLeft},0)`);
+  wrap.addEventListener('scroll', () => {
+    const frozen = document.getElementById('ch-frozen');
+    if (frozen) frozen.setAttribute('transform', `translate(${wrap.scrollLeft},0)`);
   });
 
-  wrap.addEventListener('wheel',e=>{
-    if(wrap.scrollWidth<=wrap.clientWidth) return;
-    const delta=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
-    if(!delta) return;
-    wrap.scrollLeft+=delta;
+  wrap.addEventListener('wheel', e => {
+    if (wrap.scrollWidth <= wrap.clientWidth) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!delta) return;
+    wrap.scrollLeft += delta;
     e.preventDefault();
-  },{passive:false});
+  }, { passive: false });
 
-  let dragging=false,startX=0,startScroll=0;
-  wrap.addEventListener('mousedown',e=>{
-    if(wrap.scrollWidth<=wrap.clientWidth) return;
-    dragging=true;
-    startX=e.clientX;
-    startScroll=wrap.scrollLeft;
+  let dragging = false, startX = 0, startScroll = 0;
+  wrap.addEventListener('mousedown', e => {
+    if (wrap.scrollWidth <= wrap.clientWidth) return;
+    dragging = true;
+    startX = e.clientX;
+    startScroll = wrap.scrollLeft;
     wrap.classList.add('dragging');
   });
-  window.addEventListener('mousemove',e=>{
-    if(!dragging) return;
-    wrap.scrollLeft=startScroll-(e.clientX-startX);
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    wrap.scrollLeft = startScroll - (e.clientX - startX);
   });
-  const stopDrag=()=>{
-    dragging=false;
+  const stopDrag = () => {
+    dragging = false;
     wrap.classList.remove('dragging');
   };
-  window.addEventListener('mouseup',stopDrag);
-  wrap.addEventListener('mouseleave',stopDrag);
+  window.addEventListener('mouseup', stopDrag);
+  wrap.addEventListener('mouseleave', stopDrag);
 }
 
 // ═══════════════════════════════════════════════════════
 //  5. WORD CLOUD
 // ═══════════════════════════════════════════════════════
-function drawWC(){
-  const s=d3.select('#wc');s.selectAll('*').remove();
-  const data=filtNW();
-  const allTitles=(data.length>0?data:NW).map(d=>d.titulo).join(' ');
-  const stop=new Set(['de','la','el','en','a','y','que','los','las','por','con','del','se','un','una','al','es','para','no','su','más','como','ha','lo','le','si','son','sus','sobre','entre','pero','o','también','ya','este','esta','han','hay','ante','fue','ni','muy','hasta','desde','tras','sin','cuando','todo','hace','puede','les','esto','cada','todos','dos','tres','cuatro','cinco','seis','siete','ocho','nuevo','nueva','gran','estos','estas','ser','sido','has','tienen','sera','será','año','años']);
-  const freq={};
-  allTitles.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z\s]/g,' ').split(/\s+/).filter(w=>w.length>3&&!stop.has(w)).forEach(w=>{freq[w]=(freq[w]||0)+1});
-  const words=Object.entries(freq).map(([text,count])=>({text,count})).sort((a,b)=>b.count-a.count).slice(0,55);
-  const ctr=s.node().parentElement;
-  const W=ctr.clientWidth-4,H=420;
-  s.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
-  if(!words.length){s.append('text').attr('x',W/2).attr('y',H/2).attr('text-anchor','middle').style('fill',cssVar('--muted')).text('Sin datos suficientes');return}
-  const maxC=words[0].count,minC=words[words.length-1].count;
-  const sz=d3.scaleLog().domain([Math.max(1,minC),Math.max(2,maxC)]).range([13,48]).clamp(true);
-  const pal=['#4f9cf9','#f97316','#22d3a5','#c084fc','#f43f5e','#fbbf24','#34d399','#a78bfa','#f472b6','#67e8f9','#86efac','#fdba74','#fca5a5'];
-  const g=s.append('g').attr('transform',`translate(${W/2},${H/2})`);
-  const placed=[];
-  words.forEach((w,i)=>{
-    const fs=sz(w.count);
-    const estW=w.text.length*fs*0.56+6;const estH=fs*1.15;
-    const col=pal[i%pal.length];
-    let found=false,ang=0,r=2,step=0.42,tries=0;
-    while(!found&&tries<600){
-      const x=r*Math.cos(ang);const y=r*Math.sin(ang)*0.62;
-      if(Math.abs(x)+estW/2<W/2-4&&Math.abs(y)+estH/2<H/2-4){
-        const ok=placed.every(p=>Math.abs(p.x-x)>(estW/2+p.w/2+3)||Math.abs(p.y-y)>(estH/2+p.h/2+2));
-        if(ok){
-          placed.push({x,y,w:estW,h:estH});
-          const t=g.append('text').attr('class','wc-word').attr('x',x).attr('y',y).attr('text-anchor','middle').attr('dominant-baseline','middle')
-            .style('font-size',`${fs}px`)
-            .style('font-family',fs>24?'Lora,Georgia,serif':'Sora,sans-serif')
-            .style('font-weight',w.count>=5?'600':'400')
-            .style('fill',col).style('opacity',.88).text(w.text);
-          t.on('mousemove',(e)=>{tip(e,`<strong>${w.text}</strong>Frecuencia: <b>${w.count}</b> titular${w.count!==1?'es':''}`);s.classed('wc-hover',true);t.classed('wc-focus',true)})
-            .on('mouseleave',(e)=>{htip(e);s.classed('wc-hover',false);t.classed('wc-focus',false)})
-            .on('click',()=>{
-              document.querySelectorAll('#tb tr').forEach(r=>r.style.background='');
-              let first=null;
-              document.querySelectorAll('#tb tr').forEach(r=>{
-                if(r.querySelector('.tc')?.textContent.toLowerCase().includes(w.text)){r.style.background='rgba(79,156,249,.1)';if(!first)first=r;}
+function drawWC() {
+  const s = d3.select('#wc'); s.selectAll('*').remove();
+  const data = filtNW();
+  const allTitles = (data.length > 0 ? data : NW).map(d => d.titulo).join(' ');
+  const stop = new Set(['de', 'la', 'el', 'en', 'a', 'y', 'que', 'los', 'las', 'por', 'con', 'del', 'se', 'un', 'una', 'al', 'es', 'para', 'no', 'su', 'más', 'como', 'ha', 'lo', 'le', 'si', 'son', 'sus', 'sobre', 'entre', 'pero', 'o', 'también', 'ya', 'este', 'esta', 'han', 'hay', 'ante', 'fue', 'ni', 'muy', 'hasta', 'desde', 'tras', 'sin', 'cuando', 'todo', 'hace', 'puede', 'les', 'esto', 'cada', 'todos', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nuevo', 'nueva', 'gran', 'estos', 'estas', 'ser', 'sido', 'has', 'tienen', 'sera', 'será', 'año', 'años']);
+  const freq = {};
+  allTitles.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !stop.has(w)).forEach(w => { freq[w] = (freq[w] || 0) + 1 });
+  const words = Object.entries(freq).map(([text, count]) => ({ text, count })).sort((a, b) => b.count - a.count).slice(0, 55);
+  const ctr = s.node().parentElement;
+  const W = ctr.clientWidth - 4, H = 420;
+  s.attr('viewBox', `0 0 ${W} ${H}`).attr('width', W).attr('height', H);
+  if (!words.length) { s.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle').style('fill', cssVar('--muted')).text('Sin datos suficientes'); return }
+  const maxC = words[0].count, minC = words[words.length - 1].count;
+  const sz = d3.scaleLog().domain([Math.max(1, minC), Math.max(2, maxC)]).range([13, 48]).clamp(true);
+  const pal = ['#4f9cf9', '#f97316', '#22d3a5', '#c084fc', '#f43f5e', '#fbbf24', '#34d399', '#a78bfa', '#f472b6', '#67e8f9', '#86efac', '#fdba74', '#fca5a5'];
+  const g = s.append('g').attr('transform', `translate(${W / 2},${H / 2})`);
+  const placed = [];
+  words.forEach((w, i) => {
+    const fs = sz(w.count);
+    const estW = w.text.length * fs * 0.56 + 6; const estH = fs * 1.15;
+    const col = pal[i % pal.length];
+    let found = false, ang = 0, r = 2, step = 0.42, tries = 0;
+    while (!found && tries < 600) {
+      const x = r * Math.cos(ang); const y = r * Math.sin(ang) * 0.62;
+      if (Math.abs(x) + estW / 2 < W / 2 - 4 && Math.abs(y) + estH / 2 < H / 2 - 4) {
+        const ok = placed.every(p => Math.abs(p.x - x) > (estW / 2 + p.w / 2 + 3) || Math.abs(p.y - y) > (estH / 2 + p.h / 2 + 2));
+        if (ok) {
+          placed.push({ x, y, w: estW, h: estH });
+          const t = g.append('text').attr('class', 'wc-word').attr('x', x).attr('y', y).attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+            .style('font-size', `${fs}px`)
+            .style('font-family', fs > 24 ? 'Lora,Georgia,serif' : 'Sora,sans-serif')
+            .style('font-weight', w.count >= 5 ? '600' : '400')
+            .style('fill', col).style('opacity', .88).text(w.text);
+          t.on('mousemove', (e) => { tip(e, `<strong>${w.text}</strong>Frecuencia: <b>${w.count}</b> titular${w.count !== 1 ? 'es' : ''}`); s.classed('wc-hover', true); t.classed('wc-focus', true) })
+            .on('mouseleave', (e) => { htip(e); s.classed('wc-hover', false); t.classed('wc-focus', false) })
+            .on('click', () => {
+              document.querySelectorAll('#tb tr').forEach(r => r.style.background = '');
+              let first = null;
+              document.querySelectorAll('#tb tr').forEach(r => {
+                if (r.querySelector('.tc')?.textContent.toLowerCase().includes(w.text)) { r.style.background = 'rgba(79,156,249,.1)'; if (!first) first = r; }
               });
-              if(first)first.scrollIntoView({behavior:'smooth',block:'nearest'});
+              if (first) first.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
-          found=true;
+          found = true;
         }
       }
-      ang+=step;r+=0.45;tries++;
+      ang += step; r += 0.45; tries++;
     }
   });
-  document.getElementById('chip-wc').textContent=`top ${Math.min(words.length,55)} términos`;
+  document.getElementById('chip-wc').textContent = `top ${Math.min(words.length, 55)} términos`;
 }
 
 // ═══════════════════════════════════════════════════════
 //  6. TABLA CON PAGINACIÓN
 // ═══════════════════════════════════════════════════════
-function goPage(page){
-  PG.page=page;
+function goPage(page) {
+  PG.page = page;
   redraw();
 }
 
-function drawTB(){
-  const all=filtNW().filter(n=>n.temas&&n.temas.length>0);
-  const total=all.length;
-  const pages=Math.ceil(total/PG.perPage)||1;
-  if(PG.page>=pages)PG.page=pages-1;
-  const start=PG.page*PG.perPage;
-  const slice=all.slice(start,start+PG.perPage);
+function drawTB() {
+  const all = filtNW().filter(n => n.temas && n.temas.length > 0);
+  const total = all.length;
+  const pages = Math.ceil(total / PG.perPage) || 1;
+  if (PG.page >= pages) PG.page = pages - 1;
+  const start = PG.page * PG.perPage;
+  const slice = all.slice(start, start + PG.perPage);
 
-  document.getElementById('tc').textContent=`${total} noticias`;
+  document.getElementById('tc').textContent = `${total} noticias`;
 
-  const tb=document.getElementById('tb');
-  if(!all.length){
-    tb.innerHTML=`<tr><td colspan="4" class="nodata">Sin resultados para el filtro seleccionado</td></tr>`;
-    document.getElementById('pg-bar').style.display='none';
+  const tb = document.getElementById('tb');
+  if (!all.length) {
+    tb.innerHTML = `<tr><td colspan="4" class="nodata">Sin resultados para el filtro seleccionado</td></tr>`;
+    document.getElementById('pg-bar').style.display = 'none';
     return;
   }
-  document.getElementById('pg-bar').style.display='flex';
+  document.getElementById('pg-bar').style.display = 'flex';
 
-  tb.innerHTML=slice.map(n=>`<tr>
-    <td class="tc">${trunc(n.titulo,85)}</td>
-    <td><span class="mbadge" style="background:${CM[n.medio]||'#4f9cf9'}22;color:${CM[n.medio]||'#4f9cf9'};border:1px solid ${CM[n.medio]||'#4f9cf9'}44">${LM[n.medio]||n.medio}</span></td>
-    <td>${(n.temas||[]).map(t=>`<span class="ttag" style="color:${CT[t]||'#4f9cf9'};background:${CT[t]||'#4f9cf9'}15;border-color:${CT[t]||'#4f9cf9'}33">${LT[t]||t}</span>`).join('')}</td>
+  tb.innerHTML = slice.map(n => `<tr>
+    <td class="tc">${trunc(n.titulo, 85)}</td>
+    <td><span class="mbadge" style="background:${CM[n.medio] || '#4f9cf9'}22;color:${CM[n.medio] || '#4f9cf9'};border:1px solid ${CM[n.medio] || '#4f9cf9'}44">${LM[n.medio] || n.medio}</span></td>
+    <td>${(n.temas || []).map(t => `<span class="ttag" style="color:${CT[t] || '#4f9cf9'};background:${CT[t] || '#4f9cf9'}15;border-color:${CT[t] || '#4f9cf9'}33">${LT[t] || t}</span>`).join('')}</td>
     <td><a href="${n.url}" target="_blank" rel="noopener" class="nlink">↗ Ver</a></td>
   </tr>`).join('');
 
-  document.getElementById('pg-info').textContent=`Mostrando ${start+1}–${Math.min(start+PG.perPage,total)} de ${total}`;
+  document.getElementById('pg-info').textContent = `Mostrando ${start + 1}–${Math.min(start + PG.perPage, total)} de ${total}`;
 
-  const btns=document.getElementById('pg-btns');
-  btns.innerHTML='';
+  const btns = document.getElementById('pg-btns');
+  btns.innerHTML = '';
 
-  const prev=document.createElement('button');
-  prev.className='pg-btn pg-nav';
-  prev.textContent='‹ Anterior';
-  prev.disabled=PG.page===0;
-  prev.onclick=()=>goPage(PG.page-1);
+  const prev = document.createElement('button');
+  prev.className = 'pg-btn pg-nav';
+  prev.textContent = '‹ Anterior';
+  prev.disabled = PG.page === 0;
+  prev.onclick = () => goPage(PG.page - 1);
   btns.appendChild(prev);
 
-  const maxVisible=5;
-  let pStart=Math.max(0,PG.page-Math.floor(maxVisible/2));
-  let pEnd=Math.min(pages-1,pStart+maxVisible-1);
-  if(pEnd-pStart<maxVisible-1)pStart=Math.max(0,pEnd-maxVisible+1);
+  const maxVisible = 5;
+  let pStart = Math.max(0, PG.page - Math.floor(maxVisible / 2));
+  let pEnd = Math.min(pages - 1, pStart + maxVisible - 1);
+  if (pEnd - pStart < maxVisible - 1) pStart = Math.max(0, pEnd - maxVisible + 1);
 
-  if(pStart>0){
-    const b=document.createElement('button');
-    b.className='pg-btn';
-    b.textContent='1';
-    b.onclick=()=>goPage(0);
+  if (pStart > 0) {
+    const b = document.createElement('button');
+    b.className = 'pg-btn';
+    b.textContent = '1';
+    b.onclick = () => goPage(0);
     btns.appendChild(b);
-    if(pStart>1){
-      const e=document.createElement('span');
-      e.textContent='…';
-      e.style.cssText='color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
+    if (pStart > 1) {
+      const e = document.createElement('span');
+      e.textContent = '…';
+      e.style.cssText = 'color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
       btns.appendChild(e);
     }
   }
 
-  for(let p=pStart;p<=pEnd;p++){
-    const b=document.createElement('button');
-    b.className='pg-btn'+(p===PG.page?' active':'');
-    b.textContent=p+1;
-    b.onclick=()=>goPage(p);
+  for (let p = pStart; p <= pEnd; p++) {
+    const b = document.createElement('button');
+    b.className = 'pg-btn' + (p === PG.page ? ' active' : '');
+    b.textContent = p + 1;
+    b.onclick = () => goPage(p);
     btns.appendChild(b);
   }
 
-  if(pEnd<pages-1){
-    if(pEnd<pages-2){
-      const e=document.createElement('span');
-      e.textContent='…';
-      e.style.cssText='color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
+  if (pEnd < pages - 1) {
+    if (pEnd < pages - 2) {
+      const e = document.createElement('span');
+      e.textContent = '…';
+      e.style.cssText = 'color:var(--muted);padding:0 .3rem;align-self:center;font-size:.8rem';
       btns.appendChild(e);
     }
-    const b=document.createElement('button');
-    b.className='pg-btn';
-    b.textContent=pages;
-    b.onclick=()=>goPage(pages-1);
+    const b = document.createElement('button');
+    b.className = 'pg-btn';
+    b.textContent = pages;
+    b.onclick = () => goPage(pages - 1);
     btns.appendChild(b);
   }
 
-  const next=document.createElement('button');
-  next.className='pg-btn pg-nav';
-  next.textContent='Siguiente ›';
-  next.disabled=PG.page>=pages-1;
-  next.onclick=()=>goPage(PG.page+1);
+  const next = document.createElement('button');
+  next.className = 'pg-btn pg-nav';
+  next.textContent = 'Siguiente ›';
+  next.disabled = PG.page >= pages - 1;
+  next.onclick = () => goPage(PG.page + 1);
   btns.appendChild(next);
 }
 
-function trunc(s,n){return s&&s.length>n?s.slice(0,n)+'…':s}
+function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : s }
 
 // ═══════════════════════════════════════════════════════
 //  REDRAW
 // ═══════════════════════════════════════════════════════
-function redraw(){updKPIs();drawB();drawL();drawT();drawH();drawWC();drawTB()}
+function redraw() { updKPIs(); drawB(); drawL(); drawT(); drawH(); drawWC(); drawTB() }
 
 // ═══════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════
-document.getElementById('fecha-actual').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-window.addEventListener('load',()=>{initHeatmapScroller();redraw()});
-window.addEventListener('resize',()=>{clearTimeout(window._rt);window._rt=setTimeout(redraw,160)});
+document.getElementById('fecha-actual').textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+window.addEventListener('load', async () => {
+  try {
+    const noticias = await fetchNoticias();
+    buildAggregates(noticias);
+    buildDynamicUI();
+    initHeatmapScroller();
+    redraw();
+    console.log(`✅ Cargadas ${NW.length} noticias desde Supabase`);
+  } catch (err) {
+    console.error('Error cargando noticias:', err);
+    document.getElementById('loading').querySelector('.loading-text').textContent = 'Error al cargar datos. Revisa la consola.';
+    return;
+  }
+  // Ocultar loading
+  document.getElementById('loading').classList.add('hidden');
+  setTimeout(() => document.getElementById('loading').remove(), 500);
+});
+
+window.addEventListener('resize', () => { clearTimeout(window._rt); window._rt = setTimeout(redraw, 160) });
 </script>
+</body>
+</html>
 </body>
 </html>
