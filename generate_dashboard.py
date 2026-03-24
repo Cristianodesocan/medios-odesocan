@@ -2,8 +2,8 @@
 generate_dashboard.py — Regenera el HTML del dashboard D3 con datos frescos de la BD local.
 
 Uso:
-    python generate_dashboard.py               # Sobreescribe el HTML original
-    python generate_dashboard.py --dry-run     # Muestra estadísticas sin escribir
+    python generate_dashboard.py              # Sobreescribe el HTML original
+    python generate_dashboard.py --dry-run    # Muestra estadísticas sin escribir
     python generate_dashboard.py --output /ruta/output.html
 """
 
@@ -20,7 +20,7 @@ from config import BASE_DIR, DB_PATH, MEDIOS, TEMAS
 
 log = logging.getLogger("generate_dashboard")
 
-DASHBOARD_HTML = BASE_DIR / "dashboard_medios_odesocan.html"
+DASHBOARD_HTML = BASE_DIR / "index.html"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -57,8 +57,8 @@ def cargar_noticias() -> list[dict]:
     cur = conn.cursor()
     cur.execute("""
         SELECT medio, titulo, temas, url, fecha_scrap
-        FROM noticias
-        WHERE titulo IS NOT NULL AND titulo != ''
+        FROM   noticias
+        WHERE  titulo IS NOT NULL AND titulo != ''
         ORDER BY fecha_scrap DESC
     """)
     rows = [dict(r) for r in cur.fetchall()]
@@ -71,12 +71,10 @@ def cargar_noticias() -> list[dict]:
 # ── Construcción de los arrays JS ─────────────────────────────────────────────
 
 def construir_datos(noticias: list[dict]) -> dict:
-
     # MM — totales por medio
     medio_counts: dict[str, int] = defaultdict(int)
     for n in noticias:
         medio_counts[n["medio"]] += 1
-
     MM = [
         {"medio": m, "total": medio_counts.get(m, 0), "color": cfg["color"]}
         for m, cfg in MEDIOS.items()
@@ -90,7 +88,6 @@ def construir_datos(noticias: list[dict]) -> dict:
         for t in n["temas_list"]:
             if t in TEMAS:
                 tema_counts[t] += 1
-
     TM = [
         {"tema": t, "n": tema_counts.get(t, 0), "color": cfg["color"]}
         for t, cfg in TEMAS.items()
@@ -103,7 +100,6 @@ def construir_datos(noticias: list[dict]) -> dict:
         for t in n["temas_list"]:
             if t in TEMAS:
                 hm[(n["medio"], t)] += 1
-
     HM = [
         {"medio": medio, "tema": tema, "n": count}
         for (medio, tema), count in hm.items()
@@ -122,7 +118,6 @@ def construir_datos(noticias: list[dict]) -> dict:
             td[(n["medio"], hora_key)] += 1
         except (ValueError, AttributeError):
             continue
-
     TD = [
         {"medio": medio, "hora": hora, "n": count}
         for (medio, hora), count in td.items()
@@ -144,17 +139,16 @@ def construir_datos(noticias: list[dict]) -> dict:
     return {"MM": MM, "TM": TM, "HM": HM, "TD": TD, "NW": NW}
 
 
-# ── Inyección en el HTML ───────────────────────────────────────────────────────
+# ── Inyección en el HTML ─────────────────────────────────────────────────────
 
 def generar_html(datos: dict, output: Path, dry_run: bool = False) -> None:
     html = DASHBOARD_HTML.read_text(encoding="utf-8")
 
     MM, TM, HM, TD, NW = datos["MM"], datos["TM"], datos["HM"], datos["TD"], datos["NW"]
-
-    total       = sum(m["total"] for m in MM)
-    num_medios  = len(MM)
-    num_temas   = len([t for t in TM if t["n"] > 0])
-    fecha_gen   = datetime.now().strftime("%d.%m.%Y")
+    total      = sum(m["total"] for m in MM)
+    num_medios = len(MM)
+    num_temas  = len([t for t in TM if t["n"] > 0])
+    fecha_gen  = datetime.now().strftime("%d.%m.%Y")
 
     # Bloque de datos JS que sustituirá al existente
     nuevo_bloque = (
@@ -174,7 +168,6 @@ def generar_html(datos: dict, output: Path, dry_run: bool = False) -> None:
         html,
         count=1,
     )
-
     if html_nuevo == html:
         log.warning("No se encontró el bloque de datos para reemplazar — revisa el HTML.")
         return
@@ -197,7 +190,7 @@ def generar_html(datos: dict, output: Path, dry_run: bool = False) -> None:
         return
 
     output.write_text(html_nuevo, encoding="utf-8")
-    log.info("✓ Dashboard actualizado → %s  [%d noticias · %d medios · %d temas activos]",
+    log.info("✓ Dashboard actualizado → %s [%d noticias · %d medios · %d temas activos]",
              output, total, num_medios, num_temas)
 
 
@@ -206,18 +199,18 @@ def generar_html(datos: dict, output: Path, dry_run: bool = False) -> None:
 def main(output: Path | None = None, dry_run: bool = False) -> None:
     _configurar_logging()
     out = output or DASHBOARD_HTML
-
     log.info("Cargando noticias desde BD…")
     noticias = cargar_noticias()
     log.info("%d noticias en BD", len(noticias))
-
     datos = construir_datos(noticias)
     generar_html(datos, out, dry_run=dry_run)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Regenera el dashboard D3 con datos frescos")
-    parser.add_argument("--output",   type=Path, default=None,  help="Ruta de salida (por defecto sobreescribe el original)")
-    parser.add_argument("--dry-run",  action="store_true",       help="Muestra estadísticas sin escribir nada")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="Ruta de salida (por defecto sobreescribe el original)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Muestra estadísticas sin escribir nada")
     args = parser.parse_args()
     main(output=args.output, dry_run=args.dry_run)
