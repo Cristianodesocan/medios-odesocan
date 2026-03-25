@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 30
  
     env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"  
       SUPABASE_HOST:     ${{ secrets.SUPABASE_HOST }}
       SUPABASE_PORT:     ${{ secrets.SUPABASE_PORT }}
       SUPABASE_DBNAME:   ${{ secrets.SUPABASE_DBNAME }}
@@ -42,6 +43,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: requirements-ci.txt   # ← AÑADIR ESTA LÍNEA
  
       - name: Instalar dependencias del sistema
         run: |
