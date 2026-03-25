@@ -74,7 +74,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dashboard_medios_odesocan.html data/
+          git add index.html data/
           # Solo hacer commit si hay cambios
           git diff --staged --quiet || git commit -m "🗞️ Actualización automática — $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
