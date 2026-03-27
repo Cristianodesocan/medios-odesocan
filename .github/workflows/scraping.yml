@@ -7,8 +7,8 @@ name: Scraping medios canarios
  
 on:
   schedule:
-    # Cada día a las 10:00 UTC (11:00 hora Canarias)
-    - cron: "0 10 * * *"
+    # Cada día a las 08:00 UTC (09:00 hora Canarias)
+    - cron: "0 08 * * *"
   workflow_dispatch:   # Permite ejecución manual desde la UI de GitHub Actions
     inputs:
       medio:
