@@ -108,6 +108,9 @@ MEDIOS = {
             "titular": "h2 a, h3 a, .entry-title a, article a",
             "resumen": ".entry-excerpt, .entry-summary, p.lead",
         },
+        # AVISO (abril 2026): el sitio devuelve ECONNREFUSED de forma persistente.
+        # Se mantiene en config para reactivar cuando el servidor vuelva online.
+        # Total histórico scraping_log: 0 noticias desde el inicio del proyecto.
     },
     "canariasnoticias": {
         "nombre":  "Canarias Noticias",
@@ -120,6 +123,9 @@ MEDIOS = {
             "titular": "h2 a, h3 a, .entry-title a, article a",
             "resumen": ".entry-excerpt, .entry-summary, p.lead",
         },
+        # AVISO (abril 2026): el sitio devuelve ECONNREFUSED de forma persistente.
+        # Se mantiene en config para reactivar cuando el servidor vuelva online.
+        # Total histórico scraping_log: 0 noticias desde el inicio del proyecto.
     },
     "canariasahora": {
         "nombre":  "Canarias Ahora",
@@ -184,9 +190,10 @@ MEDIOS = {
         ],
         "tipo": "rss+html",
         "max_items": 25,
-        # folioePress CMS (CodeIgniter)
+        # folioePress CMS (CodeIgniter) — portada usa h3, no h1
+        # Verificado en abril 2026: titulares en <h3> anidados en <a>
         "selectores": {
-            "titular": "h1.title a",
+            "titular": "h3 a, h2 a",
             "resumen": "div.newsbody > p",
         },
         # Patrón: /art/{id}/{slug}
@@ -220,8 +227,10 @@ MEDIOS = {
         "tipo": "rss+html",
         "max_items": 20,
         # WordPress + Elementor Pro (Hello Elementor theme)
+        # Verificado en abril 2026: los titulares usan h2, no h1.
+        # Selector anterior (.elementor-widget-theme-post-title h1...) no coincidía.
         "selectores": {
-            "titular": ".elementor-widget-theme-post-title h1.elementor-heading-title a",
+            "titular": "h2.elementor-heading-title a, .elementor-heading-title a",
             "resumen": ".elementor-widget-theme-post-excerpt",
         },
         # Patrón WP: /{slug}/
@@ -623,24 +632,27 @@ SCRAPER = {
 }
 
 # Pool de User-Agents realistas (navegadores actuales, distintos SO)
+# Actualizado abril 2026: Chrome 133-134, Firefox 136, Safari 18, Edge 134
 USER_AGENTS = [
-    # Chrome en Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    # Chrome en Windows (versiones 133-134)
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.88 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.141 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.165 Safari/537.36",
     # Chrome en macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    # Firefox en Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.88 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_3_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.165 Safari/537.36",
+    # Firefox en Windows (versiones 135-136)
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
     # Firefox en macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0",
-    # Safari en macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15.3; rv:136.0) Gecko/20100101 Firefox/136.0",
+    # Safari en macOS (versión 18)
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_3_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3.2 Safari/605.1.15",
     # Edge en Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
-    # Chrome en Linux
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.88 Safari/537.36 Edg/134.0.3124.72",
+    # Chrome en Linux (Ubuntu)
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.88 Safari/537.36",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0",
 ]
 
 # ── Supabase ──────────────────────────────────────────────────────────────────

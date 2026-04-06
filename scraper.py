@@ -169,8 +169,31 @@ def _esperar(feed: bool = False) -> None:
         time.sleep(pausa)
 
 
-def _headers_navegador(ua: str) -> dict:
-    """Genera headers HTTP realistas para el UA dado."""
+def _headers_navegador(ua: str, es_feed: bool = False) -> dict:
+    """
+    Genera headers HTTP realistas para el UA dado.
+    - es_feed=True: headers apropiados para RSS/Atom (Accept XML, sin Sec-Fetch de navegación).
+    - es_feed=False (default): headers de carga de página HTML completa.
+    """
+    if es_feed:
+        # Para feeds RSS/Atom: Accept que prioriza XML y no envía cabeceras
+        # de navegación que delatan que no es un navegador real (Sec-Fetch-*).
+        return {
+            "User-Agent": ua,
+            "Accept": (
+                "application/rss+xml, application/atom+xml, "
+                "application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7"
+            ),
+            "Accept-Language": random.choice([
+                "es-ES,es;q=0.9",
+                "es-ES,es;q=0.9,en;q=0.8",
+            ]),
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+
     es_firefox = "Firefox" in ua
     return {
         "User-Agent": ua,
@@ -247,7 +270,7 @@ class ClienteHTTP:
             ua = self._ua()
             try:
                 _esperar(feed=es_feed)
-                r = self.client.get(url, headers=_headers_navegador(ua))
+                r = self.client.get(url, headers=_headers_navegador(ua, es_feed=es_feed))
                 r.raise_for_status()
                 html = r.text
                 cache_file.write_text(html, encoding="utf-8")
@@ -381,16 +404,51 @@ def parsear_rss(
     cliente: ClienteHTTP,
     max_items: int = 0,
 ) -> list[dict]:
-    """Parsea un feed RSS/Atom. Devuelve lista de noticias normalizadas."""
+    """
+    Parsea un feed RSS/Atom. Devuelve lista de noticias normalizadas.
+
+    Estrategia de doble intento para maximizar disponibilidad:
+      1. feedparser fetcha la URL directamente (UA de navegador, Accept XML,
+         soporta ETag/Last-Modified — más compatible con algunos CDN/WAF).
+      2. Si falla o devuelve 0 entradas, httpx como fallback con UA rotativo.
+    """
     if max_items <= 0:
         max_items = SCRAPER["max_items_por_medio"]
 
     log.info("  RSS: %s", feed_url)
-    html = cliente.get(feed_url, usar_cache=False, es_feed=True)
-    if not html:
-        return []
+    ua = random.choice(USER_AGENTS)
 
-    feed = feedparser.parse(html)
+    # ── Intento 1: feedparser directo con cabeceras de navegador ─────────────
+    # feedparser usa urllib internamente; al pasarle request_headers con un UA
+    # real y Accept XML, evitamos que algunos WAF rechacen peticiones de bots.
+    _esperar(feed=True)
+    try:
+        feed = feedparser.parse(
+            feed_url,
+            agent=ua,
+            request_headers={
+                "Accept": (
+                    "application/rss+xml, application/atom+xml, "
+                    "application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7"
+                ),
+                "Accept-Language": "es-ES,es;q=0.9",
+                "Accept-Encoding": "gzip, deflate",
+                "Cache-Control": "no-cache",
+            },
+        )
+    except Exception as e:
+        log.warning("  feedparser directo falló en %s: %s", feed_url, e)
+        feed = None
+
+    # ── Intento 2: httpx con UA rotativo (fallback) ───────────────────────
+    if not feed or (feed.bozo and not feed.entries):
+        log.info("  RSS fallback httpx: %s", feed_url)
+        html = cliente.get(feed_url, usar_cache=False, es_feed=True)
+        if not html:
+            log.warning("  Feed inaccesible (httpx): %s", feed_url)
+            return []
+        feed = feedparser.parse(html)
+
     if feed.bozo and not feed.entries:
         log.warning("  Feed malformado o vacío: %s", feed_url)
         return []
