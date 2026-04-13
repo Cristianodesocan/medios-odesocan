@@ -183,6 +183,13 @@ h1 {
   font-family: var(--font-body); outline: none; transition: all var(--transition);
 }
 .filter-select:focus { border-color: var(--accent); }
+.filter-date-input {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 100px; padding: .28rem .7rem; font-size: .75rem;
+  font-family: var(--font-body); outline: none; transition: all var(--transition);
+  cursor: pointer;
+}
+.filter-date-input:focus { border-color: var(--accent); }
 .reset-btn {
   margin-left: auto; background: transparent; border: 1px solid var(--border);
   color: var(--muted); border-radius: 100px; padding: .28rem .85rem;
@@ -387,7 +394,7 @@ footer {
   .filters-label { display: none; }
   .filter-sep { display: none; }
   .reset-btn { margin-left: 0; flex-shrink: 0; }
-  .filter-btn, .filter-select { flex-shrink: 0; }
+  .filter-btn, .filter-select, .filter-date-input { flex-shrink: 0; }
 
   .active-filter-bar { padding-left: 1rem; padding-right: 1rem; font-size: .72rem; }
 
@@ -448,20 +455,35 @@ footer {
 <!-- ═══ FILTROS ═══ -->
 <div class="filters-bar" id="filters-bar">
   <span class="filters-label">Medio</span>
-  <button class="filter-btn active" data-medio="todos" onclick="setMedio('todos',this)">Todos</button>
-  <!-- Los botones de medios se generan dinámicamente -->
+  <select id="filtro-medio" class="filter-select" onchange="setMedio(this.value)">
+    <option value="todos">Todos los medios</option>
+    <!-- Se rellenan dinámicamente -->
+  </select>
   <div class="filter-sep"></div>
   <span class="filters-label">Tema</span>
   <select id="filtro-tema" class="filter-select" onchange="setTema(this.value)">
     <option value="todos">Todos los temas</option>
   </select>
+  <div class="filter-sep"></div>
+  <span class="filters-label">Periodo</span>
+  <button class="filter-btn date-btn active" data-period="todo" onclick="setDatePeriod('todo',this)">Todo</button>
+  <button class="filter-btn date-btn" data-period="hoy" onclick="setDatePeriod('hoy',this)">Hoy</button>
+  <button class="filter-btn date-btn" data-period="7d" onclick="setDatePeriod('7d',this)">7 días</button>
+  <button class="filter-btn date-btn" data-period="30d" onclick="setDatePeriod('30d',this)">30 días</button>
+  <button class="filter-btn date-btn" data-period="custom" onclick="setDatePeriod('custom',this)">Personalizado</button>
+  <span id="date-custom-range" style="display:none;align-items:center;gap:.4rem">
+    <input type="date" id="date-desde" class="filter-date-input" onchange="setCustomDate()">
+    <span style="color:var(--muted);font-size:.75rem">—</span>
+    <input type="date" id="date-hasta" class="filter-date-input" onchange="setCustomDate()">
+  </span>
   <button class="reset-btn" onclick="resetFiltros()">✕ Limpiar</button>
 </div>
 
 <div class="active-filter-bar" id="afbar">
   <span>Filtros activos →</span>
-  <span id="af-medio" class="af-tag" onclick="setMedio('todos',null)" style="display:none"></span>
-  <span id="af-tema"  class="af-tag" onclick="setTema('todos')"       style="display:none"></span>
+  <span id="af-medio" class="af-tag" onclick="setMedio('todos')" style="display:none"></span>
+  <span id="af-tema"  class="af-tag" onclick="setTema('todos')"  style="display:none"></span>
+  <span id="af-fecha" class="af-tag" onclick="setDatePeriod('todo',null);document.querySelectorAll('.date-btn').forEach(b=>b.classList.toggle('active',b.dataset.period==='todo'))" style="display:none"></span>
   <span id="af-count" style="margin-left:auto;color:var(--muted)"></span>
 </div>
 
@@ -604,7 +626,7 @@ const LT = {
 // ═══════════════════════════════════════════════════════
 let NW = [], MM = [], TM = [], HM = [], TD = [];
 let CM = {}, CT = {};
-let S = { medio: 'todos', tema: 'todos' };
+let S = { medio: 'todos', tema: 'todos', fechaDesde: null, fechaHasta: null };
 const PG = { page: 0, perPage: 8 };
 
 // ═══════════════════════════════════════════════════════
@@ -713,18 +735,14 @@ function buildDynamicUI() {
   document.getElementById('badge-medios').textContent = uniqueMedios.length;
   document.getElementById('badge-temas').textContent = uniqueTemas.length;
 
-  // Botones de medios
-  const bar = document.getElementById('filters-bar');
-  const sep = bar.querySelector('.filter-sep');
-  // Eliminar botones de medio previos (excepto "Todos")
-  bar.querySelectorAll('.filter-btn[data-medio]:not([data-medio="todos"])').forEach(b => b.remove());
+  // Select de medios
+  const selM = document.getElementById('filtro-medio');
+  selM.innerHTML = '<option value="todos">Todos los medios</option>';
   MM.forEach(m => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.dataset.medio = m.medio;
-    btn.textContent = LM[m.medio] || m.medio;
-    btn.onclick = () => setMedio(m.medio, btn);
-    bar.insertBefore(btn, sep);
+    const opt = document.createElement('option');
+    opt.value = m.medio;
+    opt.textContent = LM[m.medio] || m.medio;
+    selM.appendChild(opt);
   });
 
   // Select de temas
@@ -744,17 +762,58 @@ function buildDynamicUI() {
 function filtNW() { let d = NW; if (S.medio !== 'todos') d = d.filter(n => n.medio === S.medio); if (S.tema !== 'todos') d = d.filter(n => n.temas && n.temas.includes(S.tema)); return d }
 function filtMM() { if (S.tema === 'todos') return MM.slice().sort((a, b) => b.total - a.total); const lk = {}; HM.filter(h => h.tema === S.tema).forEach(h => lk[h.medio] = h.n); return MM.map(m => ({ ...m, total: lk[m.medio] || 0 })).sort((a, b) => b.total - a.total) }
 function filtTM() { if (S.medio === 'todos') return TM; const lk = {}; HM.filter(h => h.medio === S.medio).forEach(h => lk[h.tema] = h.n); return TM.map(t => ({ ...t, n: lk[t.tema] || 0 })).sort((a, b) => b.n - a.n) }
-function filtTD() { return S.medio === 'todos' ? TD : TD.filter(d => d.medio === S.medio) }
+function filtTD() {
+  let d = TD;
+  if (S.medio !== 'todos') d = d.filter(r => r.medio === S.medio);
+  if (S.fechaDesde && S.fechaHasta) {
+    const parse = d3.timeParse('%Y-%m-%dT%H:%M');
+    d = d.filter(r => { const t = parse(r.hora); return t >= S.fechaDesde && t <= S.fechaHasta; });
+  }
+  return d;
+}
 
 // ═══════════════════════════════════════════════════════
 //  ACCIONES
 // ═══════════════════════════════════════════════════════
-function setMedio(m, btn) { PG.page = 0; S.medio = (S.medio === m && m !== 'todos') ? 'todos' : m; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); redraw() }
+function setMedio(m) { PG.page = 0; S.medio = m; document.getElementById('filtro-medio').value = m; redraw() }
 function setTema(t) { PG.page = 0; S.tema = t; document.getElementById('filtro-tema').value = t; redraw() }
-function resetFiltros() { PG.page = 0; S = { medio: 'todos', tema: 'todos' }; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === 'todos')); document.getElementById('filtro-tema').value = 'todos'; redraw() }
-function clkMedio(m) { PG.page = 0; S.medio = (S.medio === m) ? 'todos' : m; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); redraw() }
+function resetFiltros() { PG.page = 0; S = { medio: 'todos', tema: 'todos', fechaDesde: null, fechaHasta: null }; document.getElementById('filtro-medio').value = 'todos'; document.getElementById('filtro-tema').value = 'todos'; document.querySelectorAll('.date-btn').forEach(b => b.classList.toggle('active', b.dataset.period === 'todo')); document.getElementById('date-custom-range').style.display = 'none'; document.getElementById('date-desde').value = ''; document.getElementById('date-hasta').value = ''; redraw() }
+function clkMedio(m) { PG.page = 0; S.medio = (S.medio === m) ? 'todos' : m; document.getElementById('filtro-medio').value = S.medio; redraw() }
 function clkTema(t) { PG.page = 0; S.tema = (S.tema === t) ? 'todos' : t; document.getElementById('filtro-tema').value = S.tema; redraw() }
-function clkHeat(m, t) { if (S.medio === m && S.tema === t) { resetFiltros(); return } PG.page = 0; S.medio = m; S.tema = t; document.querySelectorAll('.filter-btn[data-medio]').forEach(b => b.classList.toggle('active', b.dataset.medio === S.medio)); document.getElementById('filtro-tema').value = t; redraw() }
+function clkHeat(m, t) { if (S.medio === m && S.tema === t) { resetFiltros(); return } PG.page = 0; S.medio = m; S.tema = t; document.getElementById('filtro-medio').value = m; document.getElementById('filtro-tema').value = t; redraw() }
+
+function setDatePeriod(period, btn) {
+  PG.page = 0;
+  document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else document.querySelector('.date-btn[data-period="' + period + '"]')?.classList.add('active');
+  const customEl = document.getElementById('date-custom-range');
+  if (period === 'custom') { customEl.style.display = 'flex'; return }
+  customEl.style.display = 'none';
+  document.getElementById('date-desde').value = '';
+  document.getElementById('date-hasta').value = '';
+  if (period === 'todo') { S.fechaDesde = null; S.fechaHasta = null; }
+  else {
+    const parse = d3.timeParse('%Y-%m-%dT%H:%M');
+    const maxDate = d3.max(TD, d => parse(d.hora));
+    const hasta = new Date(maxDate); hasta.setHours(23, 59, 59);
+    const desde = new Date(maxDate);
+    if (period === 'hoy') { desde.setHours(0, 0, 0, 0); }
+    else if (period === '7d') { desde.setDate(desde.getDate() - 7); desde.setHours(0, 0, 0, 0); }
+    else if (period === '30d') { desde.setDate(desde.getDate() - 30); desde.setHours(0, 0, 0, 0); }
+    S.fechaDesde = desde; S.fechaHasta = hasta;
+  }
+  redraw();
+}
+function setCustomDate() {
+  const dv = document.getElementById('date-desde').value;
+  const hv = document.getElementById('date-hasta').value;
+  if (dv && hv) {
+    S.fechaDesde = new Date(dv + 'T00:00');
+    S.fechaHasta = new Date(hv + 'T23:59');
+    PG.page = 0; redraw();
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 //  KPIs
@@ -771,11 +830,13 @@ function updKPIs() {
   document.getElementById('kml').textContent = tm0 && tm0.total > 0 ? LM[tm0.medio] || tm0.medio : '—';
   document.getElementById('kmln').textContent = tm0 && tm0.total > 0 ? `${tm0.total} noticias` : '';
   document.getElementById('kma').textContent = mf.filter(m => m.total > 0).length;
-  const has = S.medio !== 'todos' || S.tema !== 'todos';
+  const has = S.medio !== 'todos' || S.tema !== 'todos' || S.fechaDesde !== null;
   document.getElementById('afbar').classList.toggle('visible', has);
-  const afm = document.getElementById('af-medio'), aft = document.getElementById('af-tema'), afc = document.getElementById('af-count');
+  const afm = document.getElementById('af-medio'), aft = document.getElementById('af-tema'), aff = document.getElementById('af-fecha'), afc = document.getElementById('af-count');
   afm.style.display = S.medio !== 'todos' ? 'inline' : 'none'; afm.textContent = S.medio !== 'todos' ? `✕ ${LM[S.medio] || S.medio}` : '';
   aft.style.display = S.tema !== 'todos' ? 'inline' : 'none'; aft.textContent = S.tema !== 'todos' ? `✕ ${LT[S.tema] || S.tema}` : '';
+  aff.style.display = S.fechaDesde ? 'inline' : 'none';
+  if (S.fechaDesde) { const fmt = d => d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }); aff.textContent = `✕ ${fmt(S.fechaDesde)} — ${fmt(S.fechaHasta)}`; }
   afc.textContent = has ? `${n} noticias mostradas` : '';
 }
 
