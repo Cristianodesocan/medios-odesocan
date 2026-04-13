@@ -34,10 +34,11 @@ MEDIOS = {
             "https://www.canarias7.es/rss/2.0/",
         ],
         "tipo": "rss+html",
-        # Cuota reducida: RSS ya trae ~50 items; sin límite dominaría el total
-        "max_items": 20,
+        # Cuota moderada: RSS trae ~50 items; aumentada de 20→30 para capturar
+        # más artículos regionales que rotan rápido en portada
+        "max_items": 30,
         "selectores": {
-            "titular": "h2.article-title a, h3.article-title a, article h2 a",
+            "titular": "h2.article-title a, h3.article-title a, article h2 a, h2 a, h3 a",
             "resumen": "p.article-summary, div.article-body p:first-of-type",
         },
     },
@@ -78,11 +79,17 @@ MEDIOS = {
             "https://diariodeavisos.elespanol.com/feed/",
         ],
         "tipo": "rss+html",
-        "max_items": 25,
-        # WordPress + Astra: clases entry-title y entry-extracto confirmadas en DOM
+        "max_items": 30,
+        # WordPress + Kadence Blocks (abril 2026): el tema cambió de Astra a Kadence.
+        # Se añaden selectores para wp-block-kadence-advancedheading y kt-adv-heading,
+        # manteniendo los anteriores como fallback por si la plantilla varía entre secciones.
         "selectores": {
-            "titular": "h2.entry-title a, .entry-title a",
-            "resumen": ".entry-extracto, .entry-excerpt",
+            "titular": (
+                "h2.entry-title a, .entry-title a, "
+                ".wp-block-kadence-advancedheading a, .kt-adv-heading a, "
+                "h2 a, h3 a"
+            ),
+            "resumen": ".entry-extracto, .entry-excerpt, .entry-summary, p",
         },
     },
     "laopinion": {
@@ -157,10 +164,15 @@ MEDIOS = {
         "rss": [],
         "tipo": "html_only",
         "max_items": 25,
-        # CMS propio: clases de portada confirmadas en DOM
+        # CMS propio (abril 2026): el patrón principal de titulares usa c-item__title.
+        # Se priorizan selectores verificados en DOM y se mantienen los anteriores como fallback.
         "selectores": {
-            "titular": ".c-highlight__item a, .c-ranking__link, .c-now-home__title-link, h2 a, h3 a",
-            "resumen": "p",
+            "titular": (
+                ".c-item__title a, "
+                ".c-highlight__item a, .c-ranking__link, .c-now-home__title-link, "
+                "h2 a, h3 a"
+            ),
+            "resumen": ".c-item__subtitle, p",
         },
         # Patrón URL: /seccion/slug_XXXXXXXX_XX.html
         "html_url_regex": r"https://www\.atlanticohoy\.com/[\w-]+/[\w-]+_\d+_\d+\.html",
@@ -173,10 +185,12 @@ MEDIOS = {
         "rss": [],
         "tipo": "html_only",   # RSS existe pero devuelve feed vacío
         "max_items": 25,
-        # Joomla 2.5/3.x — IceTheme Newsy 3 + mod_raxo_allmode
+        # Joomla 2.5/3.x — IceTheme Newsy 3 (it_newsy3)
+        # Verificado abril 2026: allmode_title ya no existe en el DOM;
+        # los titulares usan h3 y h4 con enlaces directos.
         "selectores": {
-            "titular": "h4 a, div.allmode_title a",
-            "resumen": "div.allmode_introtext p, div.allmode_introtext",
+            "titular": "h3 a, h4 a",
+            "resumen": "p",
         },
         # Patrón Joomla SEF: /categoria/ID-slug.html
         "html_url_regex": r"https://eltime\.es/.+/\d+-[\w-]+\.html",
@@ -208,10 +222,12 @@ MEDIOS = {
         ],
         "tipo": "rss+html",
         "max_items": 25,
-        # Joomla 4.x/5.x — GavicK Reporter + mod_news_pro_gk5
+        # Joomla 4.x/5.x — Verificado abril 2026: los selectores nspHeader y
+        # mod-articles-category-title ya no están en el DOM. Los titulares usan
+        # h3 > a directamente, con categorías en texto plano adyacente.
         "selectores": {
-            "titular": "h3.nspHeader a, a.mod-articles-category-title",
-            "resumen": "h4.nspText",
+            "titular": "h3 a, h3.nspHeader a, a.mod-articles-category-title, h2 a",
+            "resumen": "h4.nspText, p",
         },
         # Patrón: /{categoria}/{slug}
         "html_url_regex": r"https://www\.lancelotdigital\.com/[\w-]+/[\w-]+",
@@ -246,10 +262,12 @@ MEDIOS = {
         ],
         "tipo": "rss+html",
         "max_items": 25,
-        # OpenNemas CMS
+        # OpenNemas CMS — Verificado abril 2026: las clases h2.title y div.data-title
+        # ya no aparecen en el HTML renderizado. Se amplían selectores genéricos.
+        # El RSS es la fuente principal; HTML es fallback complementario.
         "selectores": {
-            "titular": "h2.title a, div.data-title a",
-            "resumen": "div.summary, div.subtitle",
+            "titular": "h2 a, h3 a, h2.title a, div.data-title a, .title a",
+            "resumen": "div.summary, div.subtitle, p",
         },
         # Patrón: /articulo/{cat}/{slug}/{timestamp+id}.html
         "html_url_regex": r"https://www\.lavozdefuerteventura\.com/articulo/[\w-]+/[\w-]+/\d+\.html",

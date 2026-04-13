@@ -252,7 +252,7 @@ class ClienteHTTP:
         return rp.can_fetch("*", url)
 
     def get(self, url: str, usar_cache: bool = True, es_feed: bool = False) -> Optional[str]:
-        """GET con caché de fichero, UA rotativo y reintentos exponenciales."""
+        """GET con caché de fichero, UA rotativo, reintentos exponenciales y stale-if-error."""
         cache_file = CACHE_DIR / f"{url_hash(url)}.html"
 
         # Servir desde caché si es reciente
@@ -273,8 +273,12 @@ class ClienteHTTP:
                 r = self.client.get(url, headers=_headers_navegador(ua, es_feed=es_feed))
                 r.raise_for_status()
                 html = r.text
-                cache_file.write_text(html, encoding="utf-8")
-                return html
+                # Validación básica: descartar respuestas vacías o demasiado cortas
+                if html and len(html.strip()) > 200:
+                    cache_file.write_text(html, encoding="utf-8")
+                    return html
+                else:
+                    log.warning("Respuesta sospechosamente corta (%d bytes) para %s", len(html), url)
             except httpx.HTTPStatusError as e:
                 log.warning(
                     "HTTP %s en %s (intento %d, UA: ...%s)",
@@ -284,7 +288,7 @@ class ClienteHTTP:
                     ua[-30:],
                 )
                 if e.response.status_code < 500:
-                    return None   # 4xx: no reintentar
+                    break   # 4xx: no reintentar, pero caer al stale-if-error
             except (httpx.RequestError, httpx.TimeoutException) as e:
                 log.warning("Error red en %s (intento %d): %s", url, intento, e)
 
@@ -292,6 +296,11 @@ class ClienteHTTP:
                 espera = 2 ** intento + random.uniform(0, 1.5)
                 log.info("Reintentando en %.1fs…", espera)
                 time.sleep(espera)
+
+        # ── Stale-if-error: servir caché expirada antes de rendirse ──────────
+        if cache_file.exists():
+            log.warning("Sirviendo caché expirada (stale-if-error) para %s", url)
+            return cache_file.read_text(encoding="utf-8", errors="replace")
 
         log.error("Fallaron todos los intentos para %s", url)
         return None
@@ -483,6 +492,73 @@ def parsear_rss(
     return noticias
 
 
+def _extraer_desde_jsonld_portada(html: str, medio_id: str, cfg: dict, max_items: int) -> list[dict]:
+    """
+    Extrae noticias desde bloques JSON-LD (ItemList, NewsArticle) en la portada.
+    Muchos CMS modernos incluyen datos estructurados incluso cuando los selectores
+    CSS cambian — esto actúa como red de seguridad complementaria.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    noticias: list[dict] = []
+    vistos: set[str] = set()
+
+    for script in soup.select("script[type='application/ld+json']"):
+        raw = script.get_text(strip=True)
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        blobs = data if isinstance(data, list) else [data]
+        for blob in blobs:
+            if not isinstance(blob, dict):
+                continue
+
+            # ItemList con ListItem elements
+            if blob.get("@type") == "ItemList":
+                for item in blob.get("itemListElement", []):
+                    url = item.get("url", "").strip()
+                    nombre = item.get("name", "").strip()
+                    if url and nombre and url not in vistos:
+                        if _url_html_permitida(url, cfg):
+                            vistos.add(url)
+                            noticias.append({
+                                "medio": medio_id,
+                                "url": url,
+                                "titulo": nombre,
+                                "resumen": "",
+                                "fecha_pub": datetime.now(timezone.utc).isoformat(),
+                                "fuente": "html",
+                                "raw": {"origen": "json-ld", "tipo": "ItemList"},
+                            })
+
+            # NewsArticle / Article individual
+            elif blob.get("@type") in ("NewsArticle", "Article", "ReportageNewsArticle"):
+                url = blob.get("url", blob.get("mainEntityOfPage", ""))
+                if isinstance(url, dict):
+                    url = url.get("@id", "")
+                titulo = blob.get("headline", "").strip()
+                if url and titulo and url not in vistos:
+                    if _url_html_permitida(url, cfg):
+                        vistos.add(url)
+                        noticias.append({
+                            "medio": medio_id,
+                            "url": url,
+                            "titulo": titulo,
+                            "resumen": (blob.get("description") or "")[:800],
+                            "fecha_pub": blob.get("datePublished") or datetime.now(timezone.utc).isoformat(),
+                            "fuente": "html",
+                            "raw": {"origen": "json-ld", "tipo": blob.get("@type")},
+                        })
+
+            if len(noticias) >= max_items:
+                break
+
+    return noticias[:max_items]
+
+
 def parsear_html_portada(
     medio_id: str,
     cfg: dict,
@@ -493,6 +569,10 @@ def parsear_html_portada(
     Extrae titulares de la portada HTML como fallback o complemento al RSS.
     Usa los selectores CSS definidos en config.py.
     Acepta tanto ClienteHTTP (httpx) como ClientePlaywright (Chromium headless).
+
+    Estrategia de doble extracción:
+      1. Selectores CSS (fuente principal, configurable por medio)
+      2. JSON-LD / datos estructurados (red de seguridad ante cambios de template)
     """
     if not cfg.get("selectores"):
         return []
@@ -547,6 +627,17 @@ def parsear_html_portada(
         })
         if len(noticias) >= max_items:
             break
+
+    # ── Fallback JSON-LD: complementar si los selectores CSS dieron pocos resultados
+    if len(noticias) < max_items // 2:
+        log.info("  JSON-LD fallback (selectores CSS dieron solo %d)", len(noticias))
+        jsonld_noticias = _extraer_desde_jsonld_portada(html, medio_id, cfg, max_items)
+        for n in jsonld_noticias:
+            if n["url"] not in vistos:
+                vistos.add(n["url"])
+                noticias.append(n)
+                if len(noticias) >= max_items:
+                    break
 
     log.info("  → %d titulares %s en %s", len(noticias), motor, cfg["url"])
     return noticias
